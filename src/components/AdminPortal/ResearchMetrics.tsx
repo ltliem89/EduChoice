@@ -38,10 +38,12 @@ import { MultiAgentFusionView } from './Research/MultiAgentFusionView';
 import { SuperAnalyticsView } from './Research/SuperAnalyticsView';
 import { ResearchDiscoveryView } from './Research/ResearchDiscoveryView';
 import { CognitiveEvolutionView } from './Research/CognitiveEvolutionView';
+import { V9DataFirstView } from './Research/V9DataFirstView';
 import { V8_100_CANONICAL_TABLES } from '../../data/v8EvolutionData';
 import { ExportDataModal } from './ExportDataModal';
 
 type ResearchSubTab =
+  | 'v9_data_first'
   | 'cognitive_evolution'
   | 'ml_forecasting'
   | 'cohort_comparison'
@@ -67,7 +69,7 @@ export const ResearchMetrics: React.FC = () => {
     sheetsLastSynced
   } = useApp();
 
-  const [activeSubTab, setActiveSubTab] = useState<ResearchSubTab>('cognitive_evolution');
+  const [activeSubTab, setActiveSubTab] = useState<ResearchSubTab>('v9_data_first');
   const [filterEventType, setFilterEventType] = useState<string>('all');
   const [tableSearchQuery, setTableSearchQuery] = useState<string>('');
   const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
@@ -161,6 +163,7 @@ export const ResearchMetrics: React.FC = () => {
         {/* Sub-tabs Navigation */}
         <div className="flex items-center gap-1 overflow-x-auto py-1 text-xs">
           {[
+            { id: 'v9_data_first', label: '⭐ V9 Data-First Master', icon: ShieldCheck },
             { id: 'cognitive_evolution', label: 'V8 Tiến Hóa Nhận Thức', icon: Sparkles },
             { id: 'ml_forecasting', label: 'Dự Báo Học Máy (ML Forecast)', icon: TrendingUp },
             { id: 'cohort_comparison', label: 'So Sánh 2 Nhóm (Cohort A/B)', icon: Users },
@@ -198,6 +201,7 @@ export const ResearchMetrics: React.FC = () => {
       </div>
 
       {/* Render Active Research Sub-module */}
+      {activeSubTab === 'v9_data_first' && <V9DataFirstView />}
       {activeSubTab === 'cognitive_evolution' && <CognitiveEvolutionView />}
       {activeSubTab === 'ml_forecasting' && <MLForecastingView />}
       {activeSubTab === 'cohort_comparison' && <CohortComparisonView />}

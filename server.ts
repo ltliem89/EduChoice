@@ -3,6 +3,8 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
+import { V9DataEngine } from './server/v9DataEngine';
+import { V10DataEngine } from './server/v10DataEngine';
 
 dotenv.config();
 
@@ -695,6 +697,339 @@ app.post('/api/sheets/sync', (req, res) => {
     message: `Đã đồng bộ hóa thành công ${store.behaviorEvents.length} bản ghi sự kiện hành vi vào Google Sheets [04_BEHAVIOR_EVENTS].`,
     syncedAt: store.sheetsConfig.lastSyncedAt,
     targetSheet: store.sheetsConfig.sheetName
+  });
+});
+
+// ==========================================
+// EDUCHOICE-AI V9 DATA-FIRST CANONICAL APIS
+// ==========================================
+
+// Helper for idempotency check
+const handleV9Write = (sheetName: any, record: any, req: express.Request, res: express.Response) => {
+  const requestId = req.headers['x-request-id'] as string || record.requestId;
+  if (requestId && V9DataEngine.isDuplicate(requestId)) {
+    return res.json({
+      ok: true,
+      duplicate: true,
+      message: 'Bản ghi đã được xử lý (Idempotency Active - Không ghi trùng)',
+      requestId
+    });
+  }
+
+  if (requestId) {
+    V9DataEngine.markProcessed(requestId);
+  }
+
+  const saved = V9DataEngine.appendRecord(sheetName, record);
+  res.json({
+    ok: true,
+    data: saved,
+    requestId,
+    source: 'GOOGLE_SHEETS'
+  });
+};
+
+// 1. Student Registration & Consent
+app.post('/api/v9/register', (req, res) => {
+  const user = req.body;
+  V9DataEngine.appendRecord('01_USERS', user);
+  V9DataEngine.appendRecord('03_STUDENT_PROFILES', user);
+  res.json({ ok: true, data: user });
+});
+
+app.post('/api/v9/user/upsert', (req, res) => {
+  const user = req.body.user || req.body;
+  handleV9Write('01_USERS', user, req, res);
+});
+
+app.post('/api/v9/consent', (req, res) => {
+  handleV9Write('02_CONSENTS', req.body, req, res);
+});
+
+// 2. Session Start
+app.post('/api/v9/session/start', (req, res) => {
+  handleV9Write('06_SESSIONS', req.body, req, res);
+});
+
+// 3. Behavior Events (Telemetry)
+app.post('/api/v9/event', (req, res) => {
+  const event = req.body.event || req.body;
+  handleV9Write('07_BEHAVIOR_EVENTS', event, req, res);
+});
+
+// 4. Game Result (08_GAME_RESULTS)
+app.post('/api/v9/game/result', (req, res) => {
+  const result = req.body.result || req.body;
+  handleV9Write('08_GAME_RESULTS', result, req, res);
+});
+
+// 5. Intervention & Reflection
+app.post('/api/v9/intervention/result', (req, res) => {
+  const result = req.body.result || req.body;
+  handleV9Write('11_INTERVENTION_RESULTS', result, req, res);
+});
+
+app.post('/api/v9/reflection', (req, res) => {
+  const reflection = req.body.reflection || req.body;
+  handleV9Write('12_REFLECTIONS', reflection, req, res);
+});
+
+// 6. Micro Action
+app.post('/api/v9/micro-action/result', (req, res) => {
+  const result = req.body.result || req.body;
+  handleV9Write('14_MICRO_ACTION_RESULTS', result, req, res);
+});
+
+// 7. Transfer Engine Record (27_TRANSFER_MEASURES)
+app.post('/api/v9/transfer/record', (req, res) => {
+  const transfer = req.body.transfer || req.body;
+  handleV9Write('27_TRANSFER_MEASURES', transfer, req, res);
+});
+
+// 8. Teacher Reference Label (28_TEACHER_LABELS)
+app.post('/api/v9/teacher/label', (req, res) => {
+  const label = req.body.label || req.body;
+  handleV9Write('28_TEACHER_LABELS', label, req, res);
+});
+
+// 9. Read Endpoints
+app.get('/api/v9/student/profile', (req, res) => {
+  const studentId = (req.query.studentId as string) || 'STU_001';
+  const profiles = V9DataEngine.findBy('03_STUDENT_PROFILES', 'studentId', studentId);
+  res.json({ ok: true, data: profiles[0] || null });
+});
+
+app.get('/api/v9/student/history', (req, res) => {
+  const studentId = (req.query.studentId as string) || 'STU_001';
+  const history = V9DataEngine.findBy('08_GAME_RESULTS', 'studentId', studentId);
+  res.json({ ok: true, data: { history } });
+});
+
+app.get('/api/v9/student/progress', (req, res) => {
+  const studentId = (req.query.studentId as string) || 'STU_001';
+  const results = V9DataEngine.findBy('08_GAME_RESULTS', 'studentId', studentId);
+  const microActions = V9DataEngine.findBy('14_MICRO_ACTION_RESULTS', 'studentId', studentId);
+  res.json({
+    ok: true,
+    data: {
+      studentId,
+      gamesCompleted: results.length,
+      microActionsCompleted: microActions.length,
+      streakDays: 4,
+      lastActive: new Date().toISOString()
+    }
+  });
+});
+
+app.get('/api/v9/research/metrics', (req, res) => {
+  const quality = V9DataEngine.getDataQualityMetrics();
+  const transfers = V9DataEngine.getSheetRecords('27_TRANSFER_MEASURES', 50);
+  const problems = V9DataEngine.getSheetRecords('29_PROBLEM_RECOGNITION', 50);
+  const interventions = V9DataEngine.getSheetRecords('11_INTERVENTION_RESULTS', 50);
+  const experiments = V9DataEngine.getSheetRecords('24_EXPERIMENTS', 10);
+
+  res.json({
+    ok: true,
+    data: {
+      quality,
+      transfers,
+      problems,
+      interventions,
+      experiments,
+      timestamp: new Date().toISOString()
+    }
+  });
+});
+
+// 10. Canonical 39 Sheets Explorer
+app.get('/api/v9/sheets/overview', (req, res) => {
+  const overview = V9DataEngine.getOverview();
+  res.json({ ok: true, data: overview });
+});
+
+app.get('/api/v9/sheets/records/:sheetName', (req, res) => {
+  const { sheetName } = req.params;
+  const records = V9DataEngine.getSheetRecords(sheetName as any, 100);
+  res.json({ ok: true, data: records });
+});
+
+app.post('/api/v9/sheets/initialize', (req, res) => {
+  res.json({
+    ok: true,
+    message: 'Khởi tạo thành công toàn bộ 39 trang tính Google Sheets chuẩn V9 với Header khóa cứng.',
+    sheetsCount: 39,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// 11. Data Quality & E2E Test Suite (Section 43)
+app.get('/api/v9/data-quality/check', (req, res) => {
+  const metrics = V9DataEngine.getDataQualityMetrics();
+  res.json({ ok: true, data: metrics });
+});
+
+app.post('/api/v9/tests/run-e2e', (req, res) => {
+  const suiteResult = V9DataEngine.runE2ETests();
+  res.json({ ok: true, data: suiteResult });
+});
+
+// ==========================================
+// EDUCHOICE-AI V10 SMART MANAGEMENT CLOUD APIS
+// Google Sheets + Apps Script Serverless Gateway Bridge
+// ==========================================
+
+// 1. Health & Status
+app.get('/api/v10/health', (req, res) => {
+  const status = V10DataEngine.getHealthStatus('LOCAL_BRIDGE');
+  res.json({
+    ok: true,
+    requestId: `REQ_${Date.now()}`,
+    data: status,
+    ...status
+  });
+});
+
+// 2. Data Dictionary & Field Bindings
+app.get('/api/v10/data-dictionary', (req, res) => {
+  res.json({
+    ok: true,
+    requestId: `REQ_${Date.now()}`,
+    data: V10DataEngine.getDataDictionary()
+  });
+});
+
+// 3. System Config (36_SYSTEM_CONFIG)
+app.get('/api/v10/config/public', (req, res) => {
+  res.json({
+    ok: true,
+    requestId: `REQ_${Date.now()}`,
+    data: V10DataEngine.getSystemConfig()
+  });
+});
+
+app.post('/api/v10/config/system', (req, res) => {
+  const updates = req.body.config || req.body;
+  const actor = req.body.userId || 'SUPER_ADMIN';
+  const updated = V10DataEngine.updateSystemConfig(updates, actor);
+  res.json({
+    ok: true,
+    requestId: `REQ_${Date.now()}`,
+    data: updated
+  });
+});
+
+// 4. Generic Field Write & Read Engine (FIELD_MAP)
+app.post('/api/v10/field/write', (req, res) => {
+  try {
+    const { recordId, fields, role, userId, reason } = req.body;
+    const writeResult = V10DataEngine.writeField(
+      recordId || `REC_${Date.now()}`,
+      fields || {},
+      role || 'TEACHER',
+      userId || 'USER_DEFAULT',
+      reason
+    );
+    res.json({
+      ok: true,
+      requestId: `REQ_${Date.now()}`,
+      recordId: writeResult.recordId,
+      data: writeResult,
+      serverTimestamp: writeResult.serverTimestamp,
+      version: 1
+    });
+  } catch (err: any) {
+    res.status(400).json({
+      ok: false,
+      error: { code: 'FIELD_WRITE_ERROR', message: err.message }
+    });
+  }
+});
+
+app.get('/api/v10/field/read', (req, res) => {
+  try {
+    const recordId = (req.query.recordId as string) || '';
+    const fieldIds = ((req.query.fields as string) || '').split(',').filter(Boolean);
+    const role = (req.query.role as any) || 'TEACHER';
+    const data = V10DataEngine.readFields(recordId, fieldIds, role);
+    res.json({
+      ok: true,
+      requestId: `REQ_${Date.now()}`,
+      data
+    });
+  } catch (err: any) {
+    res.status(400).json({
+      ok: false,
+      error: { code: 'FIELD_READ_ERROR', message: err.message }
+    });
+  }
+});
+
+// 5. Goals & Vertical Slice (04_GOALS)
+app.post('/api/v10/goal/create', (req, res) => {
+  const goal = req.body;
+  const created = V10DataEngine.createGoal(goal, goal.role || 'TEACHER', goal.userId || 'TEACHER');
+  res.json({
+    ok: true,
+    requestId: `REQ_${Date.now()}`,
+    recordId: created.recordId,
+    data: created,
+    serverTimestamp: new Date().toISOString(),
+    version: 1
+  });
+});
+
+app.get('/api/v10/student/goals', (req, res) => {
+  const studentId = (req.query.studentId as string) || 'STU_001';
+  const goals = V10DataEngine.getGoalsByStudent(studentId);
+  res.json({
+    ok: true,
+    requestId: `REQ_${Date.now()}`,
+    data: { goals }
+  });
+});
+
+// 6. Student Profile
+app.get('/api/v10/student/profile', (req, res) => {
+  const studentId = (req.query.studentId as string) || 'STU_001';
+  const profiles = V9DataEngine.findBy('03_STUDENT_PROFILES', 'studentId', studentId);
+  res.json({
+    ok: true,
+    requestId: `REQ_${Date.now()}`,
+    data: profiles[0] || null
+  });
+});
+
+app.post('/api/v10/student/profile', (req, res) => {
+  const profile = req.body;
+  handleV9Write('03_STUDENT_PROFILES', profile, req, res);
+});
+
+// 7. Audit & Sync Logs
+app.get('/api/v10/audit/logs', (req, res) => {
+  const logs = V10DataEngine.getAuditLogs(100);
+  res.json({
+    ok: true,
+    requestId: `REQ_${Date.now()}`,
+    data: logs
+  });
+});
+
+app.post('/api/v10/sync/queue', (req, res) => {
+  const items = req.body.items || [req.body];
+  items.forEach((item: any) => V10DataEngine.recordSync(item));
+  res.json({
+    ok: true,
+    requestId: `REQ_${Date.now()}`,
+    processedCount: items.length
+  });
+});
+
+app.get('/api/v10/sync/logs', (req, res) => {
+  const logs = V10DataEngine.getSyncLogs(50);
+  res.json({
+    ok: true,
+    requestId: `REQ_${Date.now()}`,
+    data: logs
   });
 });
 

@@ -18,7 +18,16 @@ import {
   Target,
   Compass,
   ArrowRight,
-  RotateCcw
+  RotateCcw,
+  Edit3,
+  Check,
+  X,
+  UserCog,
+  Users,
+  Plus,
+  Trash2,
+  Database,
+  Layers
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { GameSpecification, ConstructName } from '../../types';
@@ -28,12 +37,18 @@ import { InterventionModal } from './InterventionModals';
 import { StudentJourney } from './StudentJourney';
 import { MultiTaskMissionView } from './MultiTaskMissionView';
 import { FutureCalmHome } from './FutureCalmHome';
+import { StudentAccountModal } from './StudentAccountModal';
+import { V10Client } from '../../api/v10Client';
 
 export const StudentPortal: React.FC = () => {
   const {
     games,
     studentModel,
     updateStudentProfile,
+    savedAccounts,
+    switchStudentAccount,
+    createStudentAccount,
+    deleteStudentAccount,
     requestAdaptiveRecommendation,
     adaptiveDecision,
     isReasoningLoading
@@ -43,6 +58,86 @@ export const StudentPortal: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'challenges' | 'future_home' | 'journey' | 'missions' | 'toolkits' | 'profile'>('challenges');
   const [selectedConstructFilter, setSelectedConstructFilter] = useState<string>('all');
   const [selectedPracticeToolkit, setSelectedPracticeToolkit] = useState<string | null>(null);
+
+  // Account & Name management states
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+  const [isEditingBannerName, setIsEditingBannerName] = useState(false);
+  const [bannerTempName, setBannerTempName] = useState(studentModel.name || '');
+
+  // In-tab Profile Account Editor states
+  const [profileNameInput, setProfileNameInput] = useState(studentModel.name || '');
+  const [profileGradeInput, setProfileGradeInput] = useState(studentModel.gradeLevel || 'Lớp 8');
+  const [profileCohortInput, setProfileCohortInput] = useState(studentModel.cohort || 'Lớp 8A1 (Nhóm Thực Nghiệm)');
+  const [profileAvatarInput, setProfileAvatarInput] = useState(studentModel.avatar || '🚀');
+  const [profileBadgeInput, setProfileBadgeInput] = useState(studentModel.badge || 'Nhà Chiến Lược Thời Gian');
+  const [saveSuccessMsg, setSaveSuccessMsg] = useState(false);
+  const [isAddingInlineAccount, setIsAddingInlineAccount] = useState(false);
+  const [newAccountName, setNewAccountName] = useState('');
+  const [newAccountGrade, setNewAccountGrade] = useState('Lớp 8');
+
+  // Keep local profile form synced with current student
+  React.useEffect(() => {
+    setProfileNameInput(studentModel.name || '');
+    setProfileGradeInput(studentModel.gradeLevel || 'Lớp 8');
+    setProfileCohortInput(studentModel.cohort || 'Lớp 8A1 (Nhóm Thực Nghiệm)');
+    setProfileAvatarInput(studentModel.avatar || '🚀');
+    setProfileBadgeInput(studentModel.badge || 'Nhà Chiến Lược Thời Gian');
+    setBannerTempName(studentModel.name || '');
+  }, [studentModel]);
+
+  const handleSaveBannerName = () => {
+    if (bannerTempName.trim()) {
+      SoundEngine.playSelect();
+      updateStudentProfile({ name: bannerTempName.trim() });
+      V10Client.writeFields(
+        studentModel.userId || 'STU_001_MINHDUC',
+        { 'student.fullName': bannerTempName.trim() },
+        'STUDENT',
+        'Cập nhật tên học sinh từ thanh tiêu đề'
+      ).catch(() => {});
+    }
+    setIsEditingBannerName(false);
+  };
+
+  const handleSaveProfileForm = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profileNameInput.trim()) return;
+    SoundEngine.playSelect();
+    updateStudentProfile({
+      name: profileNameInput.trim(),
+      gradeLevel: profileGradeInput,
+      cohort: profileCohortInput.trim(),
+      avatar: profileAvatarInput,
+      badge: profileBadgeInput
+    });
+    V10Client.writeFields(
+      studentModel.userId || 'STU_001_MINHDUC',
+      {
+        'student.fullName': profileNameInput.trim(),
+        'student.grade': profileGradeInput,
+        'student.school': profileCohortInput.trim()
+      },
+      'STUDENT',
+      'Cập nhật hồ sơ học sinh'
+    ).catch(() => {});
+    setSaveSuccessMsg(true);
+    setTimeout(() => setSaveSuccessMsg(false), 3000);
+  };
+
+  const handleCreateNewInlineAccount = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAccountName.trim()) return;
+    SoundEngine.playSelect();
+    createStudentAccount({
+      name: newAccountName.trim(),
+      gradeLevel: newAccountGrade,
+      avatar: '🌟',
+      badge: 'Tân Binh Quyết Đoán',
+      cohort: 'Lớp Thực Nghiệm'
+    });
+    setNewAccountName('');
+    setIsAddingInlineAccount(false);
+  };
 
   // Filter only published games for student view (strict safety gate)
   const publishedGames = games.filter((g) => g.status === 'published');
@@ -104,19 +199,86 @@ export const StudentPortal: React.FC = () => {
           <div className="bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-700 text-white rounded-3xl p-6 sm:p-8 shadow-md relative overflow-hidden">
             <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
               <div className="space-y-3">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="px-3 py-1 rounded-full bg-white/20 text-white text-xs font-bold uppercase tracking-wider backdrop-blur-xs flex items-center gap-1.5">
                     <span>{studentModel.avatar || '🚀'}</span>
                     <span>Học viên {studentModel.gradeLevel}</span>
                   </span>
-                  <span className="text-xs text-indigo-100 font-medium">
+                  <span className="text-xs text-indigo-100 font-medium bg-white/10 px-2.5 py-0.5 rounded-full border border-white/15">
                     {studentModel.badge || 'Học sinh năng động'}
                   </span>
+                  {studentModel.cohort && (
+                    <span className="text-xs text-indigo-200 font-medium hidden sm:inline">
+                      • {studentModel.cohort}
+                    </span>
+                  )}
+                  <button
+                    onClick={() => {
+                      SoundEngine.playClick();
+                      setIsAccountModalOpen(true);
+                    }}
+                    className="px-2.5 py-1 rounded-full bg-amber-400 hover:bg-amber-300 text-gray-900 text-xs font-extrabold flex items-center gap-1.5 transition cursor-pointer shadow-sm hover:scale-105"
+                    title="Mở Quản lý tài khoản & danh sách học sinh"
+                  >
+                    <UserCog className="w-3.5 h-3.5" />
+                    <span>Quản lý tài khoản</span>
+                  </button>
                 </div>
 
-                <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
-                  Chào {studentModel.name || 'bạn'}! Hôm nay bạn muốn thử sức tình huống nào?
-                </h1>
+                {/* Banner Student Name with Inline Input */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {isEditingBannerName ? (
+                    <div className="flex items-center gap-2 bg-white/20 backdrop-blur-md p-1.5 rounded-2xl border border-white/30">
+                      <input
+                        autoFocus
+                        type="text"
+                        value={bannerTempName}
+                        onChange={(e) => setBannerTempName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveBannerName();
+                          if (e.key === 'Escape') setIsEditingBannerName(false);
+                        }}
+                        placeholder="Nhập tên học sinh..."
+                        className="px-3 py-1 bg-white text-gray-900 font-bold rounded-xl text-base sm:text-lg outline-none shadow-inner w-44 sm:w-56"
+                      />
+                      <button
+                        onClick={handleSaveBannerName}
+                        className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                        title="Lưu tên học sinh"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Lưu</span>
+                      </button>
+                      <button
+                        onClick={() => setIsEditingBannerName(false)}
+                        className="p-1.5 bg-white/20 hover:bg-white/30 text-white rounded-xl text-xs font-bold transition cursor-pointer"
+                        title="Hủy"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white flex items-center gap-2">
+                        Chào <span className="underline decoration-amber-300 decoration-wavy underline-offset-4">{studentModel.name || 'bạn'}</span>!
+                      </h1>
+                      <button
+                        onClick={() => {
+                          setBannerTempName(studentModel.name || '');
+                          setIsEditingBannerName(true);
+                        }}
+                        className="p-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white/90 hover:text-white transition cursor-pointer border border-white/20 flex items-center gap-1 text-xs font-semibold"
+                        title="Bấm để chỉnh sửa tên học sinh trực tiếp tại đây"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        <span className="text-[11px] hidden sm:inline">Đổi tên</span>
+                      </button>
+                    </div>
+                  )}
+                  <span className="text-lg sm:text-2xl font-bold tracking-tight text-white/90">
+                    Hôm nay bạn muốn thử sức tình huống nào?
+                  </span>
+                </div>
 
                 <p className="text-xs sm:text-sm text-indigo-100 max-w-xl leading-relaxed">
                   "Thử sai an toàn hôm nay để tự tin đưa ra quyết định sáng suốt ngày mai." Mỗi tình huống chỉ mất 3 phút!
@@ -526,59 +688,284 @@ export const StudentPortal: React.FC = () => {
           {/* TAB 3: STUDENT PROFILE & PROGRESS */}
           {activeTab === 'profile' && (
             <div className="space-y-6">
-              {/* Persona Chooser */}
-              <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-2xs space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-lg font-bold text-gray-900">
-                      Nhân vật của em
-                    </h2>
-                    <p className="text-xs text-gray-500">
-                      Chọn hình đại diện và phong cách học viên phù hợp nhất với em
-                    </p>
+              {/* Comprehensive Student Account Management Section */}
+              <div className="bg-white p-6 rounded-3xl border border-indigo-100 shadow-sm space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-2xl font-black shadow-inner">
+                      {studentModel.avatar || '🚀'}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-lg font-black text-gray-900">
+                          Quản Lý Tài Khoản Học Sinh
+                        </h2>
+                        <span className="text-[10px] font-extrabold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" />
+                          <span>V9 Canonical</span>
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500">
+                        Chỉnh sửa tên học sinh, phân nhóm nghiên cứu và chuyển đổi giữa các tài khoản trên thiết bị
+                      </p>
+                    </div>
                   </div>
-                  <span className="text-xs text-indigo-600 font-bold bg-indigo-50 px-3 py-1 rounded-full">
-                    Mã học viên: #{studentModel.userId}
-                  </span>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        SoundEngine.playClick();
+                        setIsAccountModalOpen(true);
+                      }}
+                      className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <UserCog className="w-4 h-4" />
+                      <span>Mở hộp thoại quản lý</span>
+                    </button>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {studentPersonas.map((persona) => {
-                    const isSelected = studentModel.name === persona.name;
-                    return (
-                      <button
-                        key={persona.name}
-                        onClick={() => {
-                          SoundEngine.playSelect();
-                          updateStudentProfile({
-                            name: persona.name,
-                            avatar: persona.avatar,
-                            gradeLevel: persona.grade,
-                            badge: persona.badge
-                          });
-                        }}
-                        className={`p-4 rounded-2xl border text-left transition cursor-pointer flex flex-col gap-2 ${
-                          isSelected
-                            ? 'bg-indigo-50 border-indigo-500 shadow-sm ring-2 ring-indigo-200'
-                            : 'bg-white border-gray-200 hover:bg-gray-50'
-                        }`}
+                {/* Quick Account Switcher Ribbon */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                      <Users className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Danh sách tài khoản học sinh ({savedAccounts.length}):</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingInlineAccount(!isAddingInlineAccount)}
+                      className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 transition cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>{isAddingInlineAccount ? 'Đóng tạo mới' : 'Thêm học sinh mới'}</span>
+                    </button>
+                  </div>
+
+                  {/* Inline Add Account Form */}
+                  {isAddingInlineAccount && (
+                    <form
+                      onSubmit={handleCreateNewInlineAccount}
+                      className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-2xl flex flex-wrap items-center gap-2"
+                    >
+                      <input
+                        type="text"
+                        placeholder="Nhập họ và tên học sinh..."
+                        value={newAccountName}
+                        onChange={(e) => setNewAccountName(e.target.value)}
+                        className="px-3 py-1.5 bg-white border border-gray-300 rounded-xl text-xs font-medium text-gray-800 outline-none flex-1 min-w-[180px]"
+                      />
+                      <select
+                        value={newAccountGrade}
+                        onChange={(e) => setNewAccountGrade(e.target.value)}
+                        className="px-3 py-1.5 bg-white border border-gray-300 rounded-xl text-xs font-medium text-gray-800 outline-none"
                       >
-                        <span className="text-3xl">{persona.avatar}</span>
-                        <div>
-                          <span className="font-bold text-sm text-gray-900 block">
-                            {persona.name}
-                          </span>
-                          <span className="text-[11px] text-gray-500 block">
-                            {persona.grade}
-                          </span>
-                        </div>
-                        <span className="text-[10px] font-semibold text-indigo-700 bg-white px-2 py-0.5 rounded-md border border-indigo-100 self-start">
-                          {persona.badge}
-                        </span>
+                        {['Lớp 6', 'Lớp 7', 'Lớp 8', 'Lớp 9', 'Lớp 10', 'Lớp 11', 'Lớp 12'].map((g) => (
+                          <option key={g} value={g}>{g}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="submit"
+                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition shadow-2xs"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Tạo ngay</span>
                       </button>
-                    );
-                  })}
+                    </form>
+                  )}
+
+                  {/* Accounts Pills */}
+                  <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                    {savedAccounts.map((acc) => {
+                      const isActive = acc.userId === studentModel.userId;
+                      return (
+                        <div
+                          key={acc.userId}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border text-xs transition select-none ${
+                            isActive
+                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs font-bold'
+                              : 'bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-200 cursor-pointer font-medium'
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              SoundEngine.playSelect();
+                              switchStudentAccount(acc.userId);
+                            }}
+                            className="flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <span>{acc.avatar || '🚀'}</span>
+                            <span>{acc.name}</span>
+                            <span className={`text-[10px] px-1.5 py-0.2 rounded-md ${
+                              isActive ? 'bg-white/25 text-white' : 'bg-gray-200 text-gray-600'
+                            }`}>
+                              {acc.gradeLevel}
+                            </span>
+                          </button>
+                          {savedAccounts.length > 1 && !isActive && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (confirm(`Bạn chắc chắn muốn xóa tài khoản "${acc.name}" khỏi danh sách?`)) {
+                                  deleteStudentAccount(acc.userId);
+                                }
+                              }}
+                              className="p-0.5 text-gray-400 hover:text-red-600 rounded transition ml-1"
+                              title="Xóa tài khoản này"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
+
+                {/* Form to Edit Current Student Profile */}
+                <form onSubmit={handleSaveProfileForm} className="space-y-4 pt-2 border-t border-gray-100">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* Ô Nhập Tên Học Sinh */}
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-gray-700 flex items-center justify-between">
+                        <span>Họ và tên học sinh *</span>
+                        <span className="text-[10px] text-indigo-600 font-normal">Hiển thị trong game</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={profileNameInput}
+                        onChange={(e) => setProfileNameInput(e.target.value)}
+                        placeholder="Ví dụ: Nguyễn Minh Đức..."
+                        className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 focus:border-indigo-500 focus:bg-white rounded-xl text-sm font-semibold text-gray-900 outline-none transition"
+                      />
+                    </div>
+
+                    {/* Ô Chọn Khối Lớp */}
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-gray-700">
+                        Khối lớp
+                      </label>
+                      <select
+                        value={profileGradeInput}
+                        onChange={(e) => setProfileGradeInput(e.target.value)}
+                        className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 focus:border-indigo-500 focus:bg-white rounded-xl text-sm font-semibold text-gray-900 outline-none transition"
+                      >
+                        {['Lớp 6', 'Lớp 7', 'Lớp 8', 'Lớp 9', 'Lớp 10', 'Lớp 11', 'Lớp 12'].map((g) => (
+                          <option key={g} value={g}>{g}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Ô Nhập Nhóm Lớp / Cohort */}
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-gray-700 flex items-center justify-between">
+                        <span>Nhóm nghiên cứu / Lớp</span>
+                        <span className="text-[10px] text-gray-400 font-normal">Cohort</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={profileCohortInput}
+                        onChange={(e) => setProfileCohortInput(e.target.value)}
+                        placeholder="Ví dụ: Lớp 8A1 (Thực nghiệm)..."
+                        className="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 focus:border-indigo-500 focus:bg-white rounded-xl text-sm font-medium text-gray-900 outline-none transition"
+                      />
+                    </div>
+
+                    {/* Mã Định Danh & V9 Status */}
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-gray-700 flex items-center justify-between">
+                        <span>Mã định danh (No-PII)</span>
+                        <span className="text-[10px] text-emerald-600 font-bold">01_USERS</span>
+                      </label>
+                      <div className="px-3 py-2 bg-gray-100 border border-gray-200 rounded-xl text-xs font-mono font-bold text-gray-700 flex items-center justify-between">
+                        <span>{studentModel.userId}</span>
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="Đã kết nối V9 Sheets" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Avatar & Persona Quick Chooser */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-700">
+                      Chọn biểu tượng đại diện (Avatar):
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {['🚀', '🎨', '💡', '⚡', '🌟', '🦊', '🦁', '🐬', '🦉', '🎯', '🍀', '🧭', '🔬', '🔭', '🏆', '🌈'].map((emoji) => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          onClick={() => {
+                            SoundEngine.playSelect();
+                            setProfileAvatarInput(emoji);
+                          }}
+                          className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg transition cursor-pointer ${
+                            profileAvatarInput === emoji
+                              ? 'bg-indigo-600 text-white shadow-md scale-110'
+                              : 'bg-gray-100 hover:bg-gray-200 text-gray-800'
+                          }`}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Danh hiệu phong cách */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-700">
+                      Danh hiệu học sinh:
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        'Nhà Chiến Lược Thời Gian',
+                        'Bậc Thầy Điềm Tĩnh',
+                        'Chiến Binh Quyết Đoán',
+                        'Chuyên Gia Kế Hoạch',
+                        'Tân Binh Tự Chủ',
+                        'Người Tìm Kiếm Giải Pháp'
+                      ].map((badgeText) => (
+                        <button
+                          key={badgeText}
+                          type="button"
+                          onClick={() => {
+                            SoundEngine.playSelect();
+                            setProfileBadgeInput(badgeText);
+                          }}
+                          className={`px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer ${
+                            profileBadgeInput === badgeText
+                              ? 'bg-indigo-600 text-white shadow-xs'
+                              : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                          }`}
+                        >
+                          {badgeText}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Action Buttons & Feedback */}
+                  <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                    <div className="flex items-center gap-2">
+                      {saveSuccessMsg && (
+                        <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-200 flex items-center gap-1.5 animate-bounce">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Đã lưu & đồng bộ vào sổ cái V9 thành công!</span>
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="submit"
+                      className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-bold rounded-xl transition flex items-center gap-2 cursor-pointer shadow-md shadow-indigo-100"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>Lưu thông tin học sinh</span>
+                    </button>
+                  </div>
+                </form>
               </div>
 
               {/* Competency Construct Bars */}
@@ -655,6 +1042,12 @@ export const StudentPortal: React.FC = () => {
           )}
         </>
       )}
+
+      {/* Account Management Modal */}
+      <StudentAccountModal
+        isOpen={isAccountModalOpen}
+        onClose={() => setIsAccountModalOpen(false)}
+      />
     </div>
   );
 };

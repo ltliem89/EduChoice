@@ -12,15 +12,37 @@ import {
   VolumeX,
   Sparkles,
   Flame,
-  Award
+  Award,
+  Edit3,
+  Check,
+  X,
+  UserCog,
+  Users,
+  Cloud
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { SoundEngine } from '../utils/soundEffects';
+import { StudentAccountModal } from './StudentApp/StudentAccountModal';
 
 export const Navbar: React.FC = () => {
-  const { mode, setMode, adminTab, setAdminTab, studentModel } = useApp();
+  const { mode, setMode, adminTab, setAdminTab, studentModel, updateStudentProfile, savedAccounts } = useApp();
   const [isMuted, setIsMuted] = useState(SoundEngine.isMuted());
   const [apiStatus, setApiStatus] = useState<'checking' | 'active' | 'offline'>('checking');
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [tempName, setTempName] = useState(studentModel.name || '');
+
+  useEffect(() => {
+    setTempName(studentModel.name || '');
+  }, [studentModel.name]);
+
+  const handleSaveName = () => {
+    if (tempName.trim()) {
+      SoundEngine.playSelect();
+      updateStudentProfile({ name: tempName.trim() });
+    }
+    setIsEditingName(false);
+  };
 
   useEffect(() => {
     fetch('/api/health')
@@ -44,9 +66,20 @@ export const Navbar: React.FC = () => {
         <div className="flex items-center justify-between h-16">
           {/* Logo & Student Welcome */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-500 text-white flex items-center justify-center shadow-md shadow-indigo-100 font-black text-xl select-none">
+            <button
+              onClick={() => {
+                if (mode === 'student') {
+                  SoundEngine.playClick();
+                  setIsAccountModalOpen(true);
+                }
+              }}
+              className={`w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-500 text-white flex items-center justify-center shadow-md shadow-indigo-100 font-black text-xl select-none transition ${
+                mode === 'student' ? 'hover:scale-105 hover:ring-2 hover:ring-indigo-300 cursor-pointer' : ''
+              }`}
+              title={mode === 'student' ? 'Bấm để quản lý tài khoản & đổi avatar' : 'EduChoice'}
+            >
               {studentModel.avatar || '🚀'}
-            </div>
+            </button>
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-extrabold text-base tracking-tight text-gray-900">
@@ -56,11 +89,77 @@ export const Navbar: React.FC = () => {
                   {mode === 'student' ? 'Góc Học Sinh' : 'Ban Quản Trị'}
                 </span>
               </div>
-              <p className="text-[11px] text-gray-500 hidden sm:block">
-                {mode === 'student'
-                  ? `Xin chào ${studentModel.name || 'bạn'} • ${studentModel.gradeLevel} • Rèn luyện kỹ năng quyết định`
-                  : 'Không gian Thiết kế Kịch bản & Quản lý Hệ thống'}
-              </p>
+
+              {/* Student Name with Inline Input & Account Management Button */}
+              {mode === 'student' ? (
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  {isEditingName ? (
+                    <div className="flex items-center gap-1">
+                      <input
+                        autoFocus
+                        type="text"
+                        value={tempName}
+                        onChange={(e) => setTempName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveName();
+                          if (e.key === 'Escape') setIsEditingName(false);
+                        }}
+                        placeholder="Tên học sinh..."
+                        className="px-2 py-0.5 text-xs font-bold border border-indigo-400 rounded-md outline-none bg-white text-gray-900 shadow-2xs w-28 sm:w-36"
+                      />
+                      <button
+                        onClick={handleSaveName}
+                        className="p-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-[10px] cursor-pointer"
+                        title="Lưu tên"
+                      >
+                        <Check className="w-3 h-3" />
+                      </button>
+                      <button
+                        onClick={() => setIsEditingName(false)}
+                        className="p-1 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-md text-[10px] cursor-pointer"
+                        title="Hủy"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[11px] text-gray-500 font-medium hidden sm:inline">
+                        Xin chào
+                      </span>
+                      <button
+                        onClick={() => {
+                          setTempName(studentModel.name || '');
+                          setIsEditingName(true);
+                        }}
+                        className="group flex items-center gap-1 px-1.5 py-0.5 rounded-lg hover:bg-indigo-50 transition cursor-pointer text-[11px] font-extrabold text-indigo-900 border border-transparent hover:border-indigo-200"
+                        title="Bấm để chỉnh sửa tên học sinh trực tiếp"
+                      >
+                        <span>{studentModel.name || 'Học viên'}</span>
+                        <Edit3 className="w-3 h-3 text-indigo-400 group-hover:text-indigo-600 opacity-70 group-hover:opacity-100" />
+                      </button>
+                      <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                        {studentModel.gradeLevel}
+                      </span>
+                      <button
+                        onClick={() => {
+                          SoundEngine.playClick();
+                          setIsAccountModalOpen(true);
+                        }}
+                        className="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[10px] font-bold flex items-center gap-1 transition cursor-pointer"
+                        title="Quản lý tài khoản và danh sách học sinh"
+                      >
+                        <UserCog className="w-3 h-3 text-indigo-600" />
+                        <span className="hidden md:inline">Quản lý tài khoản</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-[11px] text-gray-500 hidden sm:block">
+                  Không gian Thiết kế Kịch bản & Quản lý Hệ thống
+                </p>
+              )}
             </div>
           </div>
 
@@ -135,6 +234,7 @@ export const Navbar: React.FC = () => {
           <div className="flex items-center gap-1 overflow-x-auto py-2 border-t border-gray-100 text-xs font-semibold text-gray-600">
             {[
               { id: 'dashboard', label: 'Tổng quan', icon: LayoutDashboard },
+              { id: 'v10cloud', label: '☁️ V10 Remote Cloud', icon: Cloud },
               { id: 'scripts', label: 'Soạn kịch bản & AI Studio', icon: FileText },
               { id: 'games', label: 'Quản lý trò chơi', icon: Boxes },
               { id: 'toolkits', label: 'Hộp công cụ tâm lý (13)', icon: Brain },
@@ -164,6 +264,12 @@ export const Navbar: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Student Account Management Modal */}
+      <StudentAccountModal
+        isOpen={isAccountModalOpen}
+        onClose={() => setIsAccountModalOpen(false)}
+      />
     </header>
   );
 };

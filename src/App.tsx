@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { AppProvider, useApp } from './context/AppContext';
+import { ToastProvider } from './context/ToastContext';
 import { Navbar } from './components/Navbar';
 import { StudentPortal } from './components/StudentApp/StudentPortal';
 import { AdminDashboard } from './components/AdminPortal/AdminDashboard';
@@ -13,6 +14,7 @@ import { GameManager } from './components/AdminPortal/GameManager';
 import { ToolkitManager } from './components/AdminPortal/ToolkitManager';
 import { ResearchMetrics } from './components/AdminPortal/ResearchMetrics';
 import { AuditLogViewer } from './components/AdminPortal/AuditLogViewer';
+import { V10CloudManagement } from './components/AdminPortal/V10CloudManagement';
 
 function AppContent() {
   const { mode, adminTab } = useApp();
@@ -27,6 +29,7 @@ function AppContent() {
         ) : (
           <div className="space-y-6">
             {adminTab === 'dashboard' && <AdminDashboard />}
+            {adminTab === 'v10cloud' && <V10CloudManagement />}
             {adminTab === 'scripts' && <ScriptEditor />}
             {adminTab === 'games' && <GameManager />}
             {adminTab === 'toolkits' && <ToolkitManager />}
@@ -64,7 +67,9 @@ function AppContent() {
 export default function App() {
   return (
     <AppProvider>
-      <AppContent />
+      <ToastProvider>
+        <AppContent />
+      </ToastProvider>
     </AppProvider>
   );
 }

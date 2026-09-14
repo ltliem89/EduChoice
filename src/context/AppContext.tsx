@@ -19,14 +19,15 @@ import {
 import { DEFAULT_GAMES } from '../data/defaultGames';
 import { DEFAULT_SCRIPTS } from '../data/defaultScripts';
 import { APPROVED_TOOLKITS } from '../data/approvedToolkits';
+import { V9Client } from '../api/v9Client';
 
 interface AppContextType {
   mode: 'student' | 'admin' | 'teacher';
   setMode: (mode: 'student' | 'admin' | 'teacher') => void;
   userRole: UserRole;
   setUserRole: (role: UserRole) => void;
-  adminTab: 'dashboard' | 'scripts' | 'games' | 'toolkits' | 'research' | 'audit';
-  setAdminTab: (tab: 'dashboard' | 'scripts' | 'games' | 'toolkits' | 'research' | 'audit') => void;
+  adminTab: 'dashboard' | 'scripts' | 'games' | 'toolkits' | 'research' | 'audit' | 'v10cloud';
+  setAdminTab: (tab: 'dashboard' | 'scripts' | 'games' | 'toolkits' | 'research' | 'audit' | 'v10cloud') => void;
   
   // Games & Scripts
   games: GameSpecification[];
@@ -41,6 +42,10 @@ interface AppContextType {
   // Student & Telemetry
   studentModel: StudentModel;
   updateStudentProfile: (profile: Partial<StudentModel>) => void;
+  savedAccounts: StudentModel[];
+  switchStudentAccount: (userId: string) => void;
+  createStudentAccount: (accountData: { name: string; gradeLevel: string; avatar: string; badge: string; cohort?: string }) => void;
+  deleteStudentAccount: (userId: string) => void;
   behaviorEvents: BehaviorEvent[];
   logBehaviorEvent: (type: BehaviorEvent['type'], sceneId: string, payload?: Record<string, any>) => void;
   updateStudentConstruct: (construct: ConstructName, delta: number) => void;
@@ -87,7 +92,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [mode, setMode] = useState<'student' | 'admin' | 'teacher'>('student');
   const [userRole, setUserRole] = useState<UserRole>('STUDENT');
-  const [adminTab, setAdminTab] = useState<'dashboard' | 'scripts' | 'games' | 'toolkits' | 'research' | 'audit'>('dashboard');
+  const [adminTab, setAdminTab] = useState<'dashboard' | 'scripts' | 'games' | 'toolkits' | 'research' | 'audit' | 'v10cloud'>('dashboard');
   
   // Persistence with localStorage
   const [games, setGames] = useState<GameSpecification[]>(() => {
@@ -117,20 +122,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [toolkits] = useState<PsychologyToolkit[]>(APPROVED_TOOLKITS);
   const [activeGameId, setActiveGameId] = useState<string>('game_48_minutes');
 
-  // Student Model State
-  const [studentModel, setStudentModel] = useState<StudentModel>(() => {
-    try {
-      const saved = localStorage.getItem('educhoice_student_model');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return {
-      userId: 'student_01_vn',
+  // Default Student Accounts
+  const DEFAULT_STUDENT_ACCOUNTS: StudentModel[] = [
+    {
+      userId: 'STU_001_MINHDUC',
       name: 'Minh Đức',
       avatar: '🚀',
       badge: 'Nhà Chiến Lược Thời Gian',
       streakDays: 4,
       age: 13,
       gradeLevel: 'Lớp 8',
+      cohort: 'Lớp 8A1 (Nhóm Thực Nghiệm)',
       constructs: {
         Planning: 68,
         Prioritization: 52,
@@ -171,7 +173,151 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         microActionsCompleted: 5,
         reflectionsCompleted: 6
       }
-    };
+    },
+    {
+      userId: 'STU_002_BAOAN',
+      name: 'Bảo An',
+      avatar: '🎨',
+      badge: 'Bậc Thầy Điềm Tĩnh',
+      streakDays: 7,
+      age: 12,
+      gradeLevel: 'Lớp 7',
+      cohort: 'Lớp 7B2 (Nhóm Thực Nghiệm)',
+      constructs: {
+        Planning: 74,
+        Prioritization: 65,
+        ProblemSolving: 68,
+        SelfRegulation: 80,
+        AttentionControl: 72,
+        HelpSeeking: 60,
+        Reflection: 78,
+        Adaptability: 70,
+        GoalSetting: 68,
+        Communication: 75,
+        ConsequencePrediction: 66,
+        Persistence: 70,
+        Autonomy: 68,
+        TimeManagement: 64,
+        DistractionRecovery: 68,
+        Cooperation: 78,
+        Empathy: 82,
+        Responsibility: 76,
+        HealthyRoutine: 72,
+        Balance: 70
+      },
+      recentInterventions: ['self_regulation'],
+      sessionsCompleted: 6,
+      lastActive: new Date().toISOString(),
+      statsSummary: {
+        retryCount: 3,
+        strategyChangeCount: 5,
+        helpRequestCount: 4,
+        microActionsCompleted: 7,
+        reflectionsCompleted: 8
+      }
+    },
+    {
+      userId: 'STU_003_HALINH',
+      name: 'Hà Linh',
+      avatar: '💡',
+      badge: 'Chiến Binh Quyết Đoán',
+      streakDays: 5,
+      age: 14,
+      gradeLevel: 'Lớp 9',
+      cohort: 'Lớp 9A (Nhóm Đối Chứng)',
+      constructs: {
+        Planning: 62,
+        Prioritization: 75,
+        ProblemSolving: 82,
+        SelfRegulation: 64,
+        AttentionControl: 68,
+        HelpSeeking: 50,
+        Reflection: 66,
+        Adaptability: 72,
+        GoalSetting: 78,
+        Communication: 70,
+        ConsequencePrediction: 74,
+        Persistence: 80,
+        Autonomy: 75,
+        TimeManagement: 70,
+        DistractionRecovery: 65,
+        Cooperation: 70,
+        Empathy: 68,
+        Responsibility: 74,
+        HealthyRoutine: 66,
+        Balance: 64
+      },
+      recentInterventions: ['problem_solving'],
+      sessionsCompleted: 5,
+      lastActive: new Date().toISOString(),
+      statsSummary: {
+        retryCount: 4,
+        strategyChangeCount: 6,
+        helpRequestCount: 2,
+        microActionsCompleted: 6,
+        reflectionsCompleted: 5
+      }
+    },
+    {
+      userId: 'STU_004_TUANNAM',
+      name: 'Tuấn Nam',
+      avatar: '⚡',
+      badge: 'Chuyên Gia Kế Hoạch',
+      streakDays: 3,
+      age: 13,
+      gradeLevel: 'Lớp 8',
+      cohort: 'Lớp 8A3 (Nhóm Đối Chứng)',
+      constructs: {
+        Planning: 82,
+        Prioritization: 60,
+        ProblemSolving: 72,
+        SelfRegulation: 62,
+        AttentionControl: 65,
+        HelpSeeking: 58,
+        Reflection: 70,
+        Adaptability: 64,
+        GoalSetting: 75,
+        Communication: 65,
+        ConsequencePrediction: 68,
+        Persistence: 72,
+        Autonomy: 70,
+        TimeManagement: 76,
+        DistractionRecovery: 62,
+        Cooperation: 66,
+        Empathy: 68,
+        Responsibility: 70,
+        HealthyRoutine: 68,
+        Balance: 66
+      },
+      recentInterventions: ['planning'],
+      sessionsCompleted: 3,
+      lastActive: new Date().toISOString(),
+      statsSummary: {
+        retryCount: 5,
+        strategyChangeCount: 3,
+        helpRequestCount: 3,
+        microActionsCompleted: 4,
+        reflectionsCompleted: 4
+      }
+    }
+  ];
+
+  // Saved Accounts State
+  const [savedAccounts, setSavedAccounts] = useState<StudentModel[]>(() => {
+    try {
+      const saved = localStorage.getItem('educhoice_saved_accounts');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return DEFAULT_STUDENT_ACCOUNTS;
+  });
+
+  // Student Model State
+  const [studentModel, setStudentModel] = useState<StudentModel>(() => {
+    try {
+      const saved = localStorage.getItem('educhoice_student_model');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return DEFAULT_STUDENT_ACCOUNTS[0];
   });
 
   // Goal System State (Section 8)
@@ -377,6 +523,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     try {
+      localStorage.setItem('educhoice_saved_accounts', JSON.stringify(savedAccounts));
+    } catch {}
+  }, [savedAccounts]);
+
+  useEffect(() => {
+    try {
       localStorage.setItem('educhoice_goals', JSON.stringify(goals));
     } catch {}
   }, [goals]);
@@ -499,7 +651,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { strengths: topStrengths, growthAreas: topGrowthAreas, feedbackMessages: messages };
   }, [studentModel]);
 
-  // Log behavior event
+  // Log behavior event with V9 Data-First canonical pipeline
   const logBehaviorEvent = (type: BehaviorEvent['type'], sceneId: string, payload?: Record<string, any>) => {
     const newEvent: BehaviorEvent = {
       eventId: `evt_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
@@ -514,7 +666,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setBehaviorEvents((prev) => [newEvent, ...prev.slice(0, 499)]);
 
-    // Call server async
+    // 1. Send to V9 canonical data pipeline (Sheet: 07_BEHAVIOR_EVENTS)
+    V9Client.logEvent({
+      studentId: studentModel.userId,
+      sessionId: newEvent.sessionId,
+      feature: 'GAME_INTERACTION',
+      action: type,
+      gameId: activeGameId,
+      sceneId,
+      choiceId: payload?.choiceId,
+      durationMs: payload?.responseTimeMs || payload?.durationMs,
+      value: payload
+    }).catch(() => {});
+
+    // 2. Legacy telemetry endpoint fallback
     fetch('/api/telemetry/event', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -539,11 +704,115 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateStudentProfile = (profile: Partial<StudentModel>) => {
-    setStudentModel((prev) => ({
-      ...prev,
-      ...profile,
-      lastActive: new Date().toISOString()
-    }));
+    setStudentModel((prev) => {
+      const updated = {
+        ...prev,
+        ...profile,
+        lastActive: new Date().toISOString()
+      };
+      setSavedAccounts((accounts) =>
+        accounts.map((acc) => (acc.userId === updated.userId ? { ...acc, ...updated } : acc))
+      );
+      // Sync to V9 Canonical Sheets Ledger (01_USERS)
+      V9Client.upsertUser({
+        userId: updated.userId,
+        name: updated.name,
+        gradeLevel: updated.gradeLevel,
+        avatar: updated.avatar,
+        badge: updated.badge,
+        cohort: updated.cohort
+      }).catch(() => {});
+      return updated;
+    });
+  };
+
+  const switchStudentAccount = (userId: string) => {
+    const target = savedAccounts.find((a) => a.userId === userId);
+    if (target) {
+      setStudentModel(target);
+      V9Client.upsertUser({
+        userId: target.userId,
+        name: target.name,
+        gradeLevel: target.gradeLevel,
+        avatar: target.avatar,
+        badge: target.badge,
+        cohort: target.cohort
+      }).catch(() => {});
+    }
+  };
+
+  const createStudentAccount = (accountData: {
+    name: string;
+    gradeLevel: string;
+    avatar: string;
+    badge: string;
+    cohort?: string;
+  }) => {
+    const newId = `STU_${Date.now().toString(36).toUpperCase()}`;
+    const newAccount: StudentModel = {
+      userId: newId,
+      name: accountData.name.trim() || 'Học viên mới',
+      gradeLevel: accountData.gradeLevel || 'Lớp 8',
+      avatar: accountData.avatar || '🌟',
+      badge: accountData.badge || 'Tân Binh Quyết Đoán',
+      cohort: accountData.cohort || 'Lớp Thực Nghiệm A',
+      streakDays: 1,
+      age: parseInt(accountData.gradeLevel?.replace(/\D/g, '') || '13') + 6 || 13,
+      constructs: {
+        Planning: 55,
+        Prioritization: 50,
+        ProblemSolving: 55,
+        SelfRegulation: 50,
+        AttentionControl: 50,
+        HelpSeeking: 50,
+        Reflection: 50,
+        Adaptability: 50,
+        GoalSetting: 50,
+        Communication: 50,
+        ConsequencePrediction: 50,
+        Persistence: 50,
+        Autonomy: 50,
+        TimeManagement: 50,
+        DistractionRecovery: 50,
+        Cooperation: 50,
+        Empathy: 50,
+        Responsibility: 50,
+        HealthyRoutine: 50,
+        Balance: 50
+      },
+      recentInterventions: [],
+      sessionsCompleted: 0,
+      lastActive: new Date().toISOString(),
+      statsSummary: {
+        retryCount: 0,
+        strategyChangeCount: 0,
+        helpRequestCount: 0,
+        microActionsCompleted: 0,
+        reflectionsCompleted: 0
+      }
+    };
+
+    setSavedAccounts((prev) => [newAccount, ...prev]);
+    setStudentModel(newAccount);
+    V9Client.upsertUser({
+      userId: newAccount.userId,
+      name: newAccount.name,
+      gradeLevel: newAccount.gradeLevel,
+      avatar: newAccount.avatar,
+      badge: newAccount.badge,
+      cohort: newAccount.cohort
+    }).catch(() => {});
+  };
+
+  const deleteStudentAccount = (userId: string) => {
+    if (savedAccounts.length <= 1) return;
+    setSavedAccounts((prev) => {
+      const remaining = prev.filter((a) => a.userId !== userId);
+      if (studentModel.userId === userId && remaining[0]) {
+        setStudentModel(remaining[0]);
+      }
+      return remaining;
+    });
   };
 
   // GOAL ENGINE (Section 8)
@@ -825,6 +1094,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateGameStatus,
         studentModel,
         updateStudentProfile,
+        savedAccounts,
+        switchStudentAccount,
+        createStudentAccount,
+        deleteStudentAccount,
         behaviorEvents,
         logBehaviorEvent,
         updateStudentConstruct,

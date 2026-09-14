@@ -257,8 +257,12 @@ export interface LifeBalanceArea {
 export type UserRole =
   | 'STUDENT'
   | 'TEACHER'
+  | 'CLASS_TEACHER'
   | 'CONTENT_ADMIN'
-  | 'RESEARCH_ADMIN';
+  | 'RESEARCHER'
+  | 'RESEARCH_ADMIN'
+  | 'SCHOOL_ADMIN'
+  | 'SUPER_ADMIN';
 
 export interface ResearchAnalysisRecord {
   analysisId: string;
@@ -287,6 +291,8 @@ export interface StudentModel {
   streakDays?: number;
   age: number;
   gradeLevel: string;
+  cohort?: string;
+  schoolName?: string;
   constructs: Record<ConstructName, number>; // 0 to 100
   constructDetails?: Partial<Record<ConstructName, ConstructDetail>>;
   recentInterventions: string[];

@@ -1,6 +1,6 @@
 {
   "name": "EduChoice-AI",
-  "description": "Nền tảng trí tuệ giáo dục thích ứng, động cơ tiến hóa nhận thức V8, mô hình học máy (ML) dự báo xu hướng kết quả học tập có khoảng tin cậy 95%, giao diện so sánh đối chứng dữ liệu hành vi giữa 2 nhóm học viên (Dual-Cohort A/B Analysis), phát hiện mẫu hình chưa biết, đa mô hình thế giới, bộ phản chứng Popper, tranh biện đa Agent, tối ưu ngân sách suy luận và 100 bảng chuẩn hóa.",
+  "description": "Nền tảng trí tuệ giáo dục thích ứng V10 Smart Management Cloud: Vercel Frontend không máy chủ, Apps Script Data Gateway, Google Sheets Database, cơ chế Field-First binding, chống ghi trùng Idempotency, xác minh đọc-sau-ghi Read-After-Write, cấu hình từ xa và hàng đợi ngoại tuyến Offline-First.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
