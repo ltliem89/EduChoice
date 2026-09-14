@@ -1,0 +1,6 @@
+{
+  "name": "EduChoice-AI",
+  "description": "Nền tảng trí tuệ giáo dục thích ứng, động cơ tiến hóa nhận thức V8, mô hình học máy (ML) dự báo xu hướng kết quả học tập có khoảng tin cậy 95%, giao diện so sánh đối chứng dữ liệu hành vi giữa 2 nhóm học viên (Dual-Cohort A/B Analysis), phát hiện mẫu hình chưa biết, đa mô hình thế giới, bộ phản chứng Popper, tranh biện đa Agent, tối ưu ngân sách suy luận và 100 bảng chuẩn hóa.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

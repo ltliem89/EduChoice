@@ -1,0 +1,733 @@
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  Clock,
+  Volume2,
+  VolumeX,
+  RotateCcw,
+  Sparkles,
+  Send,
+  AlertCircle,
+  HelpCircle,
+  CheckCircle,
+  Award,
+  ChevronRight,
+  Pause,
+  Play
+} from 'lucide-react';
+import { GameSpecification, Scene, Choice } from '../../types';
+import { useApp } from '../../context/AppContext';
+import { SoundEngine } from '../../utils/soundEffects';
+import { InterventionModal } from './InterventionModals';
+
+interface GameRuntimeProps {
+  game: GameSpecification;
+  onExit?: () => void;
+}
+
+export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit }) => {
+  const { logBehaviorEvent, updateStudentConstruct, addCustomMicroAction } = useApp();
+  const [acceptedMicroAction, setAcceptedMicroAction] = useState(false);
+
+  const [currentSceneId, setCurrentSceneId] = useState<string>(
+    game.scenes[0]?.id || ''
+  );
+  const [history, setHistory] = useState<string[]>([]);
+  const [selectedChoiceId, setSelectedChoiceId] = useState<string | null>(null);
+  const [reflectionText, setReflectionText] = useState('');
+  const [showToolkitHint, setShowToolkitHint] = useState<string | null>(null);
+  const [isSoundMuted, setIsSoundMuted] = useState(SoundEngine.isMuted());
+  const [isPaused, setIsPaused] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+
+  // Timer per scene or overall session
+  const [timeLeft, setTimeLeft] = useState<number>(45);
+
+  const currentScene: Scene | undefined = game.scenes.find(
+    (s) => s.id === currentSceneId
+  );
+
+  // Canvas ref for animated 2D character avatar & environment
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // Initialize game start
+  useEffect(() => {
+    if (game.scenes.length > 0) {
+      setCurrentSceneId(game.scenes[0].id);
+      setTimeLeft(game.scenes[0].timeLimitSeconds || 45);
+      logBehaviorEvent('game_started', game.scenes[0].id, {
+        gameId: game.gameId,
+        title: game.title
+      });
+    }
+  }, [game.gameId]);
+
+  // Log scene view & reset timer
+  useEffect(() => {
+    if (currentSceneId) {
+      logBehaviorEvent('scene_viewed', currentSceneId, {
+        sceneType: currentScene?.type
+      });
+      if (currentScene?.timeLimitSeconds) {
+        setTimeLeft(currentScene.timeLimitSeconds);
+      }
+      setSelectedChoiceId(null);
+      setShowToolkitHint(null);
+    }
+  }, [currentSceneId]);
+
+  // Timer countdown loop
+  useEffect(() => {
+    if (isPaused || !currentScene || currentScene.type === 'ending') return;
+
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          SoundEngine.playTick();
+          return 0;
+        }
+        if (prev <= 10) {
+          SoundEngine.playTick();
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isPaused, currentScene?.id]);
+
+  // Procedural Canvas Avatar Animation
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let animationFrameId: number;
+    let frame = 0;
+
+    const mood = currentScene?.characterMood || 'neutral';
+
+    const render = () => {
+      frame++;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2 + Math.sin(frame * 0.05) * 4; // gentle breathing bob
+
+      // Background soft glow
+      const gradient = ctx.createRadialGradient(
+        centerX,
+        centerY,
+        20,
+        centerX,
+        centerY,
+        140
+      );
+      if (mood === 'stressed') {
+        gradient.addColorStop(0, 'rgba(254, 226, 226, 0.7)');
+        gradient.addColorStop(1, 'rgba(254, 242, 242, 0)');
+      } else if (mood === 'happy') {
+        gradient.addColorStop(0, 'rgba(220, 252, 231, 0.8)');
+        gradient.addColorStop(1, 'rgba(240, 253, 244, 0)');
+      } else {
+        gradient.addColorStop(0, 'rgba(224, 231, 255, 0.7)');
+        gradient.addColorStop(1, 'rgba(238, 242, 255, 0)');
+      }
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Character Head
+      ctx.beginPath();
+      ctx.arc(centerX, centerY - 15, 36, 0, Math.PI * 2);
+      ctx.fillStyle = '#fde047'; // warm face tone
+      ctx.fill();
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = '#334155';
+      ctx.stroke();
+
+      // Hair
+      ctx.beginPath();
+      ctx.arc(centerX, centerY - 28, 38, Math.PI * 0.9, Math.PI * 2.1);
+      ctx.fillStyle = '#1e293b';
+      ctx.fill();
+
+      // Eyes
+      const blink = frame % 90 > 85;
+      ctx.fillStyle = '#1e293b';
+      if (blink) {
+        // Closed eye line
+        ctx.beginPath();
+        ctx.moveTo(centerX - 16, centerY - 15);
+        ctx.lineTo(centerX - 6, centerY - 15);
+        ctx.moveTo(centerX + 6, centerY - 15);
+        ctx.lineTo(centerX + 16, centerY - 15);
+        ctx.stroke();
+      } else {
+        // Open eyes
+        ctx.beginPath();
+        ctx.arc(centerX - 11, centerY - 15, mood === 'stressed' ? 5 : 4, 0, Math.PI * 2);
+        ctx.arc(centerX + 11, centerY - 15, mood === 'stressed' ? 5 : 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Eye highlights
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(centerX - 9, centerY - 17, 1.5, 0, Math.PI * 2);
+        ctx.arc(centerX + 13, centerY - 17, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Mouth based on mood
+      ctx.beginPath();
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 2.5;
+      if (mood === 'happy') {
+        // Big smile
+        ctx.arc(centerX, centerY - 10, 16, 0.2 * Math.PI, 0.8 * Math.PI, false);
+      } else if (mood === 'stressed') {
+        // Wavy or inverted mouth
+        ctx.arc(centerX, centerY + 2, 12, 1.2 * Math.PI, 1.8 * Math.PI, false);
+        // Sweat drop
+        ctx.fillStyle = '#38bdf8';
+        ctx.beginPath();
+        ctx.arc(centerX + 28, centerY - 24 + (frame % 30) * 0.4, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (mood === 'focused') {
+        // Straight firm mouth
+        ctx.moveTo(centerX - 8, centerY - 3);
+        ctx.lineTo(centerX + 8, centerY - 3);
+      } else {
+        // Gentle smile
+        ctx.arc(centerX, centerY - 8, 10, 0.1 * Math.PI, 0.9 * Math.PI, false);
+      }
+      ctx.stroke();
+
+      // Shirt / Shoulders
+      ctx.beginPath();
+      ctx.ellipse(centerX, centerY + 58, 48, 28, 0, Math.PI, 0, false);
+      ctx.fillStyle = mood === 'happy' ? '#10b981' : mood === 'stressed' ? '#ef4444' : '#4f46e5';
+      ctx.fill();
+      ctx.strokeStyle = '#334155';
+      ctx.stroke();
+
+      animationFrameId = requestAnimationFrame(render);
+    };
+
+    render();
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [currentScene?.characterMood]);
+
+  const handleSelectChoice = (choice: Choice) => {
+    SoundEngine.playSelect();
+    setSelectedChoiceId(choice.id);
+
+    logBehaviorEvent('choice_made', currentScene?.id || '', {
+      choiceId: choice.id,
+      choiceLabel: choice.label,
+      consequenceId: choice.consequenceId,
+      timeRemaining: timeLeft
+    });
+
+    if (choice.constructImpact) {
+      updateStudentConstruct(
+        choice.constructImpact.construct as any,
+        choice.constructImpact.delta
+      );
+    }
+
+    // Smooth transition to consequence after short pause
+    setTimeout(() => {
+      setHistory((prev) => [...prev, currentSceneId]);
+      setCurrentSceneId(choice.consequenceId);
+    }, 400);
+  };
+
+  const handleNext = () => {
+    SoundEngine.playClick();
+    if (!currentScene) return;
+
+    if (currentScene.nextSceneId) {
+      setHistory((prev) => [...prev, currentSceneId]);
+      setCurrentSceneId(currentScene.nextSceneId);
+    } else if (currentScene.type === 'consequence') {
+      // Find following intervention or reflection scene
+      const currentIndex = game.scenes.findIndex((s) => s.id === currentScene.id);
+      const nextScene = game.scenes[currentIndex + 1] || game.scenes.find((s) => s.type === 'intervention' || s.type === 'reflection' || s.type === 'ending');
+      if (nextScene) {
+        setHistory((prev) => [...prev, currentSceneId]);
+        setCurrentSceneId(nextScene.id);
+      }
+    }
+  };
+
+  const handleRetry = () => {
+    SoundEngine.playSelect();
+    setRetryCount((r) => r + 1);
+    logBehaviorEvent('retry', currentSceneId, {
+      attempt: retryCount + 1,
+      reason: 'Học sinh chủ động chọn thử nghiệm lại kịch bản với chiến lược mới'
+    });
+    // Jump back to choice scene
+    const choiceScene = game.scenes.find((s) => s.type === 'choice') || game.scenes[0];
+    setCurrentSceneId(choiceScene.id);
+  };
+
+  const handleReflectionSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reflectionText.trim()) return;
+
+    SoundEngine.playReflectionChime();
+    logBehaviorEvent('reflection_submitted', currentSceneId, {
+      answer: reflectionText,
+      question: currentScene?.reflectionQuestion || currentScene?.content
+    });
+
+    updateStudentConstruct('Reflection', 15);
+
+    // Proceed to ending or next scene
+    const endingScene = game.scenes.find((s) => s.type === 'ending');
+    if (endingScene) {
+      setHistory((prev) => [...prev, currentSceneId]);
+      setCurrentSceneId(endingScene.id);
+    } else {
+      handleNext();
+    }
+  };
+
+  const toggleSound = () => {
+    const enabled = SoundEngine.toggleSound();
+    setIsSoundMuted(!enabled);
+  };
+
+  if (!currentScene) {
+    return (
+      <div className="p-12 text-center text-gray-500">
+        <AlertCircle className="w-8 h-8 text-amber-500 mx-auto mb-2" />
+        <p>Không tìm thấy phân cảnh hợp lệ trong kịch bản game.</p>
+        <button
+          onClick={onExit}
+          className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm"
+        >
+          Quay lại danh sách trò chơi
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full max-w-4xl mx-auto bg-white rounded-2xl border border-gray-200 shadow-xl overflow-hidden flex flex-col min-h-[580px]">
+      {/* Game Runtime Top Bar */}
+      <div className="bg-slate-900 text-white px-6 py-3.5 flex items-center justify-between border-b border-slate-800">
+        <div className="flex items-center gap-3">
+          <span className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse" />
+          <div>
+            <span className="text-xs font-semibold text-indigo-300 uppercase tracking-wider">
+              🎒 Không gian thử nghiệm của học sinh
+            </span>
+            <h2 className="text-sm font-bold text-white">{game.title}</h2>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4 text-xs">
+          {/* Timer Display */}
+          {currentScene.type !== 'ending' && (
+            <div
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-full font-mono font-bold transition ${
+                timeLeft <= 10
+                  ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse'
+                  : 'bg-slate-800 text-slate-200 border border-slate-700'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span>00:{timeLeft < 10 ? `0${timeLeft}` : timeLeft}</span>
+            </div>
+          )}
+
+          {/* Constructs Tags */}
+          <div className="hidden sm:flex items-center gap-1.5">
+            {game.constructs.slice(0, 2).map((c) => (
+              <span
+                key={c}
+                className="px-2 py-0.5 rounded-full bg-indigo-950/80 text-indigo-300 border border-indigo-800/60 font-medium"
+              >
+                {c === 'Prioritization'
+                  ? '🎯 Sắp xếp ưu tiên'
+                  : c === 'SelfRegulation'
+                  ? '🧘 Giữ bình tĩnh'
+                  : c === 'Planning'
+                  ? '📋 Lập kế hoạch'
+                  : c}
+              </span>
+            ))}
+          </div>
+
+          {/* Audio toggle & pause */}
+          <div className="flex items-center gap-1 border-l border-slate-700 pl-3">
+            <button
+              onClick={toggleSound}
+              title={isSoundMuted ? 'Bật âm thanh' : 'Tắt âm thanh'}
+              className="p-1.5 text-slate-300 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer"
+            >
+              {isSoundMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={() => {
+                setIsPaused(!isPaused);
+                logBehaviorEvent(isPaused ? 'resumed' : 'pause', currentSceneId);
+              }}
+              title={isPaused ? 'Tiếp tục' : 'Tạm dừng'}
+              className="p-1.5 text-slate-300 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer"
+            >
+              {isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
+            </button>
+            {onExit && (
+              <button
+                onClick={onExit}
+                className="ml-2 text-slate-300 hover:text-white text-xs px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 transition cursor-pointer"
+              >
+                Thoát
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Main Interactive Stage */}
+      <div className="p-6 md:p-8 flex-1 flex flex-col justify-between bg-gradient-to-b from-slate-50 to-white">
+        {/* Top Avatar & Scene Info */}
+        <div className="flex flex-col md:flex-row items-center gap-6 mb-6">
+          {/* 2D Canvas Character Avatar */}
+          <div className="relative w-36 h-36 flex-shrink-0 bg-white rounded-3xl border border-gray-200 shadow-sm p-1">
+            <canvas
+              ref={canvasRef}
+              width={136}
+              height={136}
+              className="w-full h-full rounded-2xl"
+            />
+            <div className="absolute -bottom-2.5 inset-x-0 flex justify-center">
+              <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-slate-900 text-white shadow-sm whitespace-nowrap">
+                {currentScene.characterMood === 'stressed'
+                  ? 'Lo lắng 😥'
+                  : currentScene.characterMood === 'happy'
+                  ? 'Tự tin, vui vẻ 😊'
+                  : currentScene.characterMood === 'focused'
+                  ? 'Tập trung 🎯'
+                  : currentScene.characterMood === 'reflective'
+                  ? 'Đang suy ngẫm 🤔'
+                  : 'Bình tĩnh 😌'}
+              </span>
+            </div>
+          </div>
+
+          {/* Dialogue & Narrative Box */}
+          <div className="flex-1 w-full bg-white rounded-3xl p-6 border border-gray-200 shadow-2xs relative">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 px-3 py-1 rounded-full">
+                {currentScene.type === 'situation' && '🌟 Bước 1: Tình Huống Ban Đầu'}
+                {currentScene.type === 'choice' && '🎯 Bước 2: Quyết Định Của Em'}
+                {currentScene.type === 'consequence' && '⚡ Bước 3: Diễn Biến Tiếp Theo'}
+                {currentScene.type === 'intervention' && '💡 Bí Kíp: Hộp Công Cụ Hỗ Trợ'}
+                {currentScene.type === 'reflection' && '🪞 Góc Nhìn: Lắng Đọng & Phản Tư'}
+                {currentScene.type === 'ending' && '🏆 Hoàn Thành Thử Thách!'}
+              </span>
+
+              <span className="text-xs text-gray-400 font-medium">
+                {game.scenes.findIndex((s) => s.id === currentScene.id) + 1} / {game.scenes.length}
+              </span>
+            </div>
+
+            <p className="text-base md:text-lg text-gray-800 font-medium leading-relaxed">
+              {currentScene.content}
+            </p>
+          </div>
+        </div>
+
+        {/* Dynamic Branching / Action Area */}
+        <div className="mt-2 flex-1 flex flex-col justify-center">
+          {/* TYPE: CHOICE */}
+          {currentScene.type === 'choice' && currentScene.choices && (
+            <div className="space-y-3 max-w-2xl mx-auto w-full">
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 flex items-center justify-between">
+                <span>Chọn hành động để tiếp tục diễn biến:</span>
+                <span className="text-indigo-600">Phím A, B, C hoặc nhấp chuột</span>
+              </div>
+
+              {currentScene.choices.map((choice) => {
+                const isSelected = selectedChoiceId === choice.id;
+                return (
+                  <div key={choice.id} className="relative group">
+                    <button
+                      type="button"
+                      onClick={() => handleSelectChoice(choice)}
+                      className={`w-full text-left p-4 rounded-xl border transition-all flex items-start gap-4 ${
+                        isSelected
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-md transform scale-[1.01]'
+                          : 'bg-white hover:bg-indigo-50/70 border-gray-200 text-gray-800 hover:border-indigo-300'
+                      }`}
+                    >
+                      <span
+                        className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm flex-shrink-0 transition ${
+                          isSelected
+                            ? 'bg-white text-indigo-600'
+                            : 'bg-gray-100 group-hover:bg-indigo-100 text-gray-700 group-hover:text-indigo-700'
+                        }`}
+                      >
+                        {choice.id}
+                      </span>
+                      <div className="flex-1">
+                        <span className="text-sm md:text-base font-semibold block leading-snug">
+                          {choice.label}
+                        </span>
+                      </div>
+                      <ChevronRight
+                        className={`w-5 h-5 flex-shrink-0 transition ${
+                          isSelected ? 'text-white' : 'text-gray-400 group-hover:text-indigo-600'
+                        }`}
+                      />
+                    </button>
+
+                    {/* Hint Toggle */}
+                    {choice.toolkitHint && (
+                      <div className="mt-1 flex items-center justify-end px-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            logBehaviorEvent('hint_requested', currentScene.id, {
+                              choiceId: choice.id
+                            });
+                            setShowToolkitHint(
+                              showToolkitHint === choice.id ? null : choice.id
+                            );
+                          }}
+                          className="text-[11px] text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+                        >
+                          <HelpCircle className="w-3.5 h-3.5" />
+                          <span>Gợi ý tâm lý học</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {showToolkitHint === choice.id && (
+                      <div className="mt-1 p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 flex items-start gap-2">
+                        <Sparkles className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                        <span>{choice.toolkitHint}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* TYPE: SITUATION */}
+          {currentScene.type === 'situation' && (
+            <div className="text-center py-6">
+              <button
+                type="button"
+                onClick={handleNext}
+                className="px-8 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl shadow-md transition flex items-center gap-2 mx-auto"
+              >
+                <span>Bắt đầu tình huống</span>
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
+          )}
+
+          {/* TYPE: CONSEQUENCE */}
+          {currentScene.type === 'consequence' && (
+            <div className="text-center py-6 max-w-xl mx-auto space-y-4">
+              <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-2xl text-left text-sm text-indigo-950 flex items-start gap-3">
+                <CheckCircle className="w-5 h-5 text-indigo-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold block">Ghi nhận phản hồi hành vi:</span>
+                  <span>
+                    Hệ thống đã ghi lại phản xạ của em vào Mô hình Năng lực Học sinh để tinh chỉnh lộ trình thích ứng.
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleRetry}
+                  className="px-5 py-2.5 bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium rounded-xl transition flex items-center gap-2"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  <span>Thử nghiệm lại nhánh khác</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleNext}
+                  className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-xl shadow-md transition flex items-center gap-2"
+                >
+                  <span>Xem phân tích can thiệp</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* TYPE: INTERVENTION */}
+          {currentScene.type === 'intervention' && (
+            <div className="py-2">
+              <InterventionModal
+                toolkitId={currentScene.toolkitId || 'prioritization'}
+                title={currentScene.content}
+                onComplete={handleNext}
+              />
+            </div>
+          )}
+
+          {/* TYPE: REFLECTION */}
+          {currentScene.type === 'reflection' && (
+            <form
+              onSubmit={handleReflectionSubmit}
+              className="max-w-xl mx-auto w-full bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4"
+            >
+              <label className="block text-sm font-semibold text-gray-800">
+                {currentScene.reflectionQuestion ||
+                  'Em đúc kết được gì từ tình huống vừa trải qua?'}
+              </label>
+
+              <textarea
+                value={reflectionText}
+                onChange={(e) => setReflectionText(e.target.value)}
+                placeholder="Nhập suy nghĩ chân thành của em... (ví dụ: Em nhận ra làm việc quan trọng trước giúp tinh thần không bị cuống)"
+                rows={3}
+                className="w-full p-3.5 text-sm rounded-xl border border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none resize-none"
+              />
+
+              <div className="flex items-center justify-between pt-2">
+                <button
+                  type="button"
+                  onClick={handleRetry}
+                  className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Thử nghiệm lại tình huống</span>
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={!reflectionText.trim()}
+                  className={`px-6 py-2.5 rounded-xl font-medium text-sm flex items-center gap-2 transition ${
+                    reflectionText.trim()
+                      ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md cursor-pointer'
+                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  }`}
+                >
+                  <Send className="w-4 h-4" />
+                  <span>Gửi phản tư</span>
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* TYPE: ENDING */}
+          {currentScene.type === 'ending' && (
+            <div className="text-center py-8 max-w-md mx-auto space-y-5">
+              <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto shadow-sm">
+                <Award className="w-8 h-8" />
+              </div>
+
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">
+                  Hoàn Thành Kịch Bản!
+                </h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  Em đã vượt qua thử thách và gia tăng các chỉ số năng lực hành vi.
+                </p>
+              </div>
+
+              <div className="bg-slate-50 p-4 rounded-xl border border-gray-200 text-left space-y-2">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider block">
+                  Chỉ số năng lực được tăng cường:
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  {game.constructs.map((c) => (
+                    <span
+                      key={c}
+                      className="px-2.5 py-1 bg-white border border-gray-200 text-emerald-700 font-semibold text-xs rounded-lg shadow-2xs flex items-center gap-1"
+                    >
+                      <Sparkles className="w-3 h-3 text-emerald-500" />
+                      {c} (+15 pts)
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Real-world Micro Action Bridge (Master Spec Section 9) */}
+              {game.microAction && (
+                <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 text-left space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-amber-600" />
+                      <span>Việc nhỏ ngoài đời thực tiếp theo ({game.microAction.durationMinutes} phút)</span>
+                    </span>
+                    <span className="text-[10px] font-bold uppercase bg-amber-200/80 text-amber-900 px-2 py-0.5 rounded-md">
+                      Cầu nối thực tế
+                    </span>
+                  </div>
+
+                  <h4 className="text-xs font-bold text-gray-900 leading-snug">
+                    {game.microAction.title}
+                  </h4>
+                  <p className="text-[11px] text-gray-600 leading-relaxed">
+                    {game.microAction.instruction}
+                  </p>
+
+                  <div className="pt-1">
+                    {acceptedMicroAction ? (
+                      <div className="text-xs text-emerald-700 font-bold bg-emerald-100/70 p-2 rounded-xl border border-emerald-200 flex items-center justify-center gap-1.5">
+                        <CheckCircle className="w-4 h-4" />
+                        <span>Đã lưu vào mục "Hành Trình Của Em"!</span>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          SoundEngine.playSuccess();
+                          addCustomMicroAction({
+                            title: game.microAction!.title,
+                            durationMinutes: game.microAction!.durationMinutes,
+                            category: 'Rèn luyện sau game',
+                            instruction: game.microAction!.instruction
+                          });
+                          setAcceptedMicroAction(true);
+                        }}
+                        className="w-full py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+                      >
+                        <span>Nhận việc nhỏ này vào Hành trình của em</span>
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={handleRetry}
+                  className="px-4 py-2.5 bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 rounded-xl text-sm font-medium transition flex items-center gap-2"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  <span>Chơi lại thử thách</span>
+                </button>
+                {onExit && (
+                  <button
+                    type="button"
+                    onClick={onExit}
+                    className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium transition shadow-md"
+                  >
+                    Xem kịch bản tiếp theo
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
