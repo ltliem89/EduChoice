@@ -500,7 +500,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [adaptiveDecision, setAdaptiveDecision] = useState<AdaptiveDecision | null>(null);
   const [isReasoningLoading, setIsReasoningLoading] = useState(false);
   const [isSyncingSheets, setIsSyncingSheets] = useState(false);
-  const [sheetsLastSynced, setSheetsLastSynced] = useState<string | null>('2026-09-14T07:00:00Z');
+  const [sheetsLastSynced, setSheetsLastSynced] = useState<string | null>(null);
 
   // Sync to localStorage
   useEffect(() => {
@@ -697,7 +697,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ...prev.constructs,
           [construct]: newScore
         },
-        sessionsCompleted: prev.sessionsCompleted + 1,
         lastActive: new Date().toISOString()
       };
     });
@@ -1065,11 +1064,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const res = await fetch('/api/sheets/sync', { method: 'POST' });
       const data = await res.json();
-      setSheetsLastSynced(new Date().toISOString());
-      return { success: true, message: data.message || 'Đồng bộ Google Sheets thành công!' };
+      // Honest fix: only report success when the server confirms it.
+      if (res.ok && data.success) {
+        setSheetsLastSynced(data.syncedAt ? new Date(data.syncedAt).toISOString() : new Date().toISOString());
+        return { success: true, message: data.message || 'Đồng bộ Google Sheets thành công!' };
+      }
+      setSheetsLastSynced(null);
+      return {
+        success: false,
+        message: data.message || `Đồng bộ thất bại (HTTP ${res.status})`
+      };
     } catch (err: any) {
-      setSheetsLastSynced(new Date().toISOString());
-      return { success: true, message: 'Đã xuất dữ liệu lên bộ đệm cổng Sheets thành công!' };
+      setSheetsLastSynced(null);
+      return {
+        success: false,
+        message: err?.message || 'Không kết nối được đến máy chủ để đồng bộ Sheets'
+      };
     } finally {
       setIsSyncingSheets(false);
     }

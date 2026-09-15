@@ -182,8 +182,12 @@ export const V10CloudManagement: React.FC = () => {
         setConfigSaveSuccess(true);
         setTimeout(() => setConfigSaveSuccess(false), 3000);
         loadAuditLogs();
+      } else {
+        alert(`Lưu cấu hình thất bại: ${res.error?.message || 'Từ chối bởi máy chủ (403)'}`);
       }
-    } catch {}
+    } catch (err: any) {
+      alert(`Lỗi khi lưu cấu hình: ${err?.message || 'Unknown'}`);
+    }
     setIsConfigSaving(false);
   };
 
@@ -209,7 +213,8 @@ export const V10CloudManagement: React.FC = () => {
       goalTitle: vsGoalTitle,
       category: vsCategory,
       target: vsTarget,
-      role: 'TEACHER'
+      role: 'TEACHER',
+      userId: 'TEA_001'
     });
 
     const writeTime = Math.round(performance.now() - writeStart);
@@ -228,7 +233,7 @@ export const V10CloudManagement: React.FC = () => {
 
     await new Promise((r) => setTimeout(r, 400));
 
-    const readRes = await V10Client.loadGoals(vsStudentId);
+    const readRes = await V10Client.loadGoals(vsStudentId, 'TEA_001');
     if (!readRes.ok || !readRes.data?.goals) {
       addLog(`❌ Thất bại khi đọc lại từ Google Sheets`);
       setVsState('error');
@@ -259,7 +264,8 @@ export const V10CloudManagement: React.FC = () => {
         studentModel.userId || 'STU_001_MINHDUC',
         { [sandboxFieldId]: sandboxValue },
         sandboxRole,
-        'Thao tác thử nghiệm trên V10 Field Sandbox'
+        'Thao tác thử nghiệm trên V10 Field Sandbox',
+        'ADM_001'
       );
       setSandboxResult(res);
       loadAuditLogs();
@@ -880,7 +886,6 @@ export const V10CloudManagement: React.FC = () => {
                   <option value="TEACHER">TEACHER</option>
                   <option value="STUDENT">STUDENT</option>
                   <option value="SCHOOL_ADMIN">SCHOOL_ADMIN</option>
-                  <option value="SUPER_ADMIN">SUPER_ADMIN</option>
                   <option value="RESEARCHER">RESEARCHER</option>
                 </select>
               </div>
@@ -1079,12 +1084,9 @@ export const V10CloudManagement: React.FC = () => {
                     </span>
                   </div>
                   <p className="text-[11px] text-gray-500 mt-2 leading-relaxed">{item.desc}</p>
-                  <button
-                    onClick={() => setUserRole(item.role as any)}
-                    className="mt-3 w-full py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-[11px] font-bold text-gray-700 rounded-lg transition cursor-pointer"
-                  >
-                    {userRole === item.role ? '✓ Đang kích hoạt' : 'Chuyển sang vai trò này'}
-                  </button>
+                  <div className="mt-3 w-full py-1.5 bg-amber-50 border border-amber-200 text-[11px] font-medium text-amber-800 rounded-lg text-center">
+                    {userRole === item.role ? 'Vai trò hiện tại (cấp phát từ máy chủ)' : 'Chỉ máy chủ mới cấp phát vai trò — không tự chuyển'}
+                  </div>
                 </div>
               ))}
             </div>

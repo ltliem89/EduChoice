@@ -127,6 +127,8 @@ export interface V10HealthStatus {
   appsScriptUrl?: string;
   tablesCount: number;
   recordsCount: number;
+  demoMode?: boolean;
+  dataLayer?: string;
 }
 
 export interface FeatureRegistryItem {

@@ -8,8 +8,8 @@ function getSheetSchemas_() {
     "00_CONFIG": ["recordId", "configKey", "configValue", "description", "updatedAt", "schemaVersion"],
     "01_USERS": ["recordId", "studentId", "role", "status", "createdAt", "updatedAt", "schemaVersion"],
     "02_CONSENTS": ["recordId", "studentId", "consentVersion", "status", "timestamp", "requestId"],
-    "03_STUDENT_PROFILES": ["recordId", "studentId", "age", "gradeLevel", "baselineCluster", "createdAt", "updatedAt"],
-    "04_GOALS": ["recordId", "studentId", "goalId", "category", "title", "target", "current", "unit", "status", "createdAt"],
+    "03_STUDENT_PROFILES": ["recordId", "studentId", "fullName", "age", "gradeLevel", "cohort", "avatar", "badge", "baselineCluster", "createdAt", "updatedAt"],
+    "04_GOALS": ["recordId", "studentId", "goalId", "category", "goalTitle", "target", "current", "unit", "status", "createdAt"],
     "05_GOAL_ACTIONS": ["recordId", "studentId", "goalId", "actionId", "status", "timestamp"],
     "06_SESSIONS": ["recordId", "sessionId", "studentId", "startedAt", "endedAt", "status", "appVersion"],
     "07_BEHAVIOR_EVENTS": ["eventId", "requestId", "studentId", "sessionId", "timestamp", "feature", "action", "gameId", "sceneId", "choiceId", "durationMs", "valueJson", "schemaVersion", "appVersion", "status"],
@@ -42,6 +42,8 @@ function getSheetSchemas_() {
     "34_DATA_DICTIONARY": ["tableName", "fieldName", "type", "required", "description", "enum", "privacyClass", "source", "usedBy", "version"],
     "35_SCHEMA_VERSIONS": ["version", "releaseDate", "migrationNotes", "appliedAt"],
     "36_SYNC_QUEUE": ["queueId", "requestId", "payloadJson", "retryCount", "status", "createdAt", "lastAttemptAt"],
+    "36_SYSTEM_CONFIG": ["recordId", "configKey", "configValue", "updatedAt", "updatedBy", "reason"],
+    "36_SYNC_LOG": ["logId", "queueId", "requestId", "route", "studentId", "status", "clientCreatedAt", "serverReceivedAt", "retryCount", "errorCode"],
     "37_DAILY_AGGREGATES": ["date", "activeStudents", "totalSessions", "totalEvents", "avgCompletionRate", "transferGapMean", "calculatedAt"],
     "38_WEEKLY_AGGREGATES": ["weekId", "activeStudents", "avgGrowthPlanning", "avgGrowthSelfRegulation", "transferRatePercent", "calculatedAt"]
   };

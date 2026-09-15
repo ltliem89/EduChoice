@@ -11,6 +11,13 @@ function doPost(e) {
   return routeRequest_("POST", e);
 }
 
+// Handle CORS preflight (OPTIONS). Apps Script content responses carry
+// Access-Control-Allow-Origin for web-app deployments.
+function doOptions(e) {
+  return ContentService.createTextOutput(JSON.stringify({ ok: true, method: "OPTIONS" }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
 function getAppProperties_() {
   const props = PropertiesService.getScriptProperties();
   return {

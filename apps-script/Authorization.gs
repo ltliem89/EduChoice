@@ -11,10 +11,19 @@ const ROLE_HIERARCHY = {
   "CONTENT_ADMIN": 50,
   "CLASS_TEACHER": 40,
   "TEACHER": 30,
-  "STUDENT": 10
+  "STUDENT": 10,
+  "GUEST": 0
 };
 
+const PUBLIC_ROUTES = new Set(["health", "config/public"]);
+
 function authorize_(context, route) {
+  // Fail-closed: every route except the public allow-list requires a verified identity.
+  if (!context || !context.authenticated) {
+    if (PUBLIC_ROUTES.has(route)) return true;
+    throw new Error("UNAUTHENTICATED: Yêu cầu định danh hợp lệ để truy cập route '" + route + "'");
+  }
+
   const role = context.role || "STUDENT";
   
   // Super Admin bypasses all route checks

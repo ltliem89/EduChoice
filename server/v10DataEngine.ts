@@ -45,7 +45,7 @@ export class V10DataEngine {
     return currentSystemConfig;
   }
 
-  public static updateSystemConfig(updates: Partial<V10SystemConfig>, user: string = 'SUPER_ADMIN'): V10SystemConfig {
+  public static updateSystemConfig(updates: Partial<V10SystemConfig>, user: string = 'SYSTEM'): V10SystemConfig {
     currentSystemConfig = {
       ...currentSystemConfig,
       ...updates,
@@ -203,17 +203,23 @@ export class V10DataEngine {
   }
 
   public static getHealthStatus(gatewayMode: string = 'LOCAL_BRIDGE'): V10HealthStatus {
+    const appsScriptConfigured = Boolean(
+      process.env.APPS_SCRIPT_URL && process.env.SPREADSHEET_ID
+    );
     return {
       ok: true,
-      appsScript: 'healthy',
-      spreadsheet: 'healthy',
+      // Honest health: Apps Script / Spreadsheet are NOT connected in this deployment.
+      appsScript: appsScriptConfigured ? 'degraded' : 'offline',
+      spreadsheet: appsScriptConfigured ? 'degraded' : 'offline',
       schemaVersion: '10.0.0',
-      lastWrite: v10AuditLogs[0]?.timestamp || new Date().toISOString(),
+      lastWrite: v10AuditLogs[0]?.timestamp || '',
       lastRead: new Date().toISOString(),
-      errorRate: 0.001,
+      errorRate: 0,
       gatewayType: gatewayMode as any,
       tablesCount: 39,
-      recordsCount: 154 + v10GoalsStore.length + v10AuditLogs.length
+      recordsCount: v10GoalsStore.length + v10AuditLogs.length + v10SyncLogs.length,
+      demoMode: true,
+      dataLayer: 'IN_MEMORY_MOCK'
     };
   }
 

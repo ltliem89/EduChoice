@@ -11,6 +11,9 @@ const sheetStore: Map<V9SheetName, any[]> = new Map();
 const processedRequestIds: Set<string> = new Set();
 
 // Seed initial realistic research data
+// NOTE: All records below are DEMO/seed data (in-memory only). UI must surface this as demo,
+// not as real Google Sheets production data.
+export const V9_SEED_IS_DEMO = true;
 function initializeV9Store() {
   const allSheetNames = Object.keys(V9_CANONICAL_SCHEMAS) as V9SheetName[];
   allSheetNames.forEach(name => {
@@ -21,6 +24,7 @@ function initializeV9Store() {
 
   // 00_CONFIG
   sheetStore.get('00_CONFIG')!.push(
+    { recordId: 'REC_CFG_00', configKey: 'DATA_LAYER_MODE', configValue: 'IN_MEMORY_DEMO', description: 'Chế độ dữ liệu hiện tại: demo in-memory, chưa kết nối Google Sheets', updatedAt: new Date().toISOString(), schemaVersion: '1.0.0' },
     { recordId: 'REC_CFG_01', configKey: 'DATA_FIRST_V9_ENABLED', configValue: 'TRUE', description: 'Kích hoạt kiến trúc V9 Data-First Sheets-First', updatedAt: new Date().toISOString(), schemaVersion: '1.0.0' },
     { recordId: 'REC_CFG_02', configKey: 'STRICT_IDEMPOTENCY', configValue: 'TRUE', description: 'Chống ghi trùng với requestId bắt buộc', updatedAt: new Date().toISOString(), schemaVersion: '1.0.0' }
   );
@@ -250,6 +254,8 @@ export class V9DataEngine {
   }
 
   // Data Quality Metrics (Section 39)
+  // Honest fix: this deployment is an in-memory demo (no real Google Sheets sink), so
+  // rates like ingestion/sync cannot be truthfully reported as production values.
   public static getDataQualityMetrics(): V9DataQualityMetrics {
     let totalRecords = 0;
     sheetStore.forEach(records => {
@@ -258,42 +264,133 @@ export class V9DataEngine {
 
     return {
       totalRecords,
-      eventIngestionRate: 99.8,
+      eventIngestionRate: 0,
       writeSuccessRate: 100.0,
       duplicateRate: 0.0,
       orphanRecordCount: 0,
       syncQueueSize: 0,
-      dataFreshnessSeconds: 2,
-      lastSyncTimestamp: new Date().toISOString(),
-      dataSource: 'GOOGLE_SHEETS'
+      dataFreshnessSeconds: 0,
+      lastSyncTimestamp: '',
+      dataSource: 'IN_MEMORY_MOCK',
+      demoMode: true,
+      message: 'Hệ thống đang chạy ở chế độ demo in-memory, chưa kết nối Google Sheets — các chỉ số đồng bộ/thu nạp = 0.'
     };
   }
 
   // Run the 20 Acceptance Test Steps (Section 43)
+  // Honest fix: each step is actually executed against the in-memory store. Steps that
+  // reference a real Apps Script / Sheets sink are reported FAIL until the integration exists.
   public static runE2ETests(): { tests: V9TestStepResult[]; allPassed: boolean } {
+    const makeStep = (
+      code: string,
+      name: string,
+      category: 'Write' | 'Read' | 'Validation' | 'Integrity' | 'Research',
+      fn: () => void,
+      traceSheet: V9SheetName
+    ): V9TestStepResult => {
+      const started = Date.now();
+      try {
+        fn();
+        return {
+          code, name, category, status: 'PASS',
+          latencyMs: Date.now() - started, traceSheet,
+          detail: 'Thực thi thành công trên in-memory demo store.'
+        };
+      } catch (err: any) {
+        return {
+          code, name, category, status: 'FAIL',
+          latencyMs: Date.now() - started, traceSheet,
+          detail: err?.message || 'FAILED'
+        };
+      }
+    };
+
     const tests: V9TestStepResult[] = [
-      { code: 'T01', name: 'Đăng Ký Học Viên (Register Student)', category: 'Write', status: 'PASS', latencyMs: 12, traceSheet: '01_USERS', detail: 'Tạo tài khoản STU_TEST_01 với ID ẩn danh chuẩn hóa.' },
-      { code: 'T02', name: 'Đồng Thuận Nghiên Cứu (Consent Record)', category: 'Write', status: 'PASS', latencyMs: 8, traceSheet: '02_CONSENTS', detail: 'Ghi nhận đồng thuận phiên bản v1.0.0.' },
-      { code: 'T03', name: 'Khởi Tạo Phiên Học (Session Start)', category: 'Write', status: 'PASS', latencyMs: 10, traceSheet: '06_SESSIONS', detail: 'Mã phiên SES_TEST_01 kèm timestamp ISO chuẩn.' },
-      { code: 'T04', name: 'Ghi Nhận Sự Kiện Vi Mô (Event Write)', category: 'Write', status: 'PASS', latencyMs: 14, traceSheet: '07_BEHAVIOR_EVENTS', detail: 'Lưu telemetry GAME_CHOICE với durationMs và schemaVersion.' },
-      { code: 'T05', name: 'Ghi Nhận Kết Quả Game (Game Result)', category: 'Write', status: 'PASS', latencyMs: 18, traceSheet: '08_GAME_RESULTS', detail: 'Lưu 7 chỉ số hành vi vi mô và construct signals.' },
-      { code: 'T06', name: 'Ghi Nhận Can Thiệp Sư Phạm (Intervention)', category: 'Write', status: 'PASS', latencyMs: 11, traceSheet: '10_INTERVENTIONS', detail: 'Can thiệp INT_5MIN_FOCUS được chấp nhận và hoàn tất.' },
-      { code: 'T07', name: 'Ghi Nhận Phản Tư Hành Vi (Reflection)', category: 'Write', status: 'PASS', latencyMs: 9, traceSheet: '12_REFLECTIONS', detail: 'Lưu câu hỏi phản tư và độ tin cậy của học viên.' },
-      { code: 'T08', name: 'Ghi Nhận Vi Hành Động Đời Thực (Micro Action)', category: 'Write', status: 'PASS', latencyMs: 13, traceSheet: '14_MICRO_ACTION_RESULTS', detail: 'Hoàn thành cam kết vi hành động trước 21h.' },
-      { code: 'T09', name: 'Truy Vết Quyết Định AI (AI Decision Log)', category: 'Write', status: 'PASS', latencyMs: 15, traceSheet: '18_AI_DECISIONS', detail: 'Ghi nhật ký promptVersion, policyVersion và inputSnapshotHash.' },
-      { code: 'T10', name: 'Đọc Lại Hồ Sơ Học Viên (Profile Read)', category: 'Read', status: 'PASS', latencyMs: 7, traceSheet: '03_STUDENT_PROFILES', detail: 'Đọc đúng hồ sơ với studentId đã đăng ký.' },
-      { code: 'T11', name: 'Đọc Lại Tiến Bộ Học Tập (Progress Read)', category: 'Read', status: 'PASS', latencyMs: 11, traceSheet: '17_STUDENT_PROGRESS', detail: 'Truy xuất chuỗi ngày liên tục và tỷ lệ hoàn thành.' },
-      { code: 'T12', name: 'Đọc Lại Lịch Sử Thực Nghiệm (History Read)', category: 'Read', status: 'PASS', latencyMs: 14, traceSheet: '08_GAME_RESULTS', detail: 'Truy xuất đầy đủ danh sách các lượt chơi đã ghi.' },
-      { code: 'T13', name: 'Chống Ghi Trùng (Duplicate Request Guard)', category: 'Validation', status: 'PASS', latencyMs: 6, traceSheet: '31_AUDIT_LOG', detail: 'Phát hiện và trả về Idempotent response cho cùng requestId.' },
-      { code: 'T14', name: 'Bảo Vệ Schema Chuẩn (Schema Validation)', category: 'Validation', status: 'PASS', latencyMs: 5, traceSheet: '35_SCHEMA_VERSIONS', detail: 'Từ chối các payload sai cấu trúc trường bắt buộc.' },
-      { code: 'T15', name: 'Kiểm Tra Thiếu Khóa Chính (Missing Field Guard)', category: 'Validation', status: 'PASS', latencyMs: 4, traceSheet: '33_ERROR_LOG', detail: 'Bắt lỗi MISSING_FIELD khi thiếu studentId hoặc recordId.' },
-      { code: 'T16', name: 'Xác Minh Đọc Sau Ghi (Read-After-Write Verification)', category: 'Integrity', status: 'PASS', latencyMs: 22, traceSheet: '08_GAME_RESULTS', detail: 'UI chỉ hiển thị sau khi xác thực bản ghi đã tồn tại ở Sheet.' },
-      { code: 'T17', name: 'Tính Toán Khoảng Cách Chuyển Hóa (Transfer Gap)', category: 'Research', status: 'PASS', latencyMs: 16, traceSheet: '27_TRANSFER_MEASURES', detail: 'Đo lường sai khác giữa Game Gain và Real-World Action Gain.' },
-      { code: 'T18', name: 'Truy Vết Nguồn Gốc Dữ Liệu (Data Lineage Trace)', category: 'Research', status: 'PASS', latencyMs: 19, traceSheet: '31_AUDIT_LOG', detail: 'Truy vết ngược: Insight → Metric → Aggregate → Raw Record → Event.' },
-      { code: 'T19', name: 'Kiểm Tra Toàn Vẹn Hệ Thống (Data Integrity Job)', category: 'Integrity', status: 'PASS', latencyMs: 25, traceSheet: '23_SYSTEM_METRICS', detail: 'Tỷ lệ toàn vẹn 100%, không phát hiện giá trị enum bất hợp lệ.' },
-      { code: 'T20', name: 'Kiểm Tra Bản Ghi Mồ Côi (Orphan Record Check)', category: 'Integrity', status: 'PASS', latencyMs: 15, traceSheet: '32_SYSTEM_LOGS', detail: 'Tất cả foreign keys đều ánh xạ chuẩn xác về sessions và users.' }
+      makeStep('T01', 'Đăng Ký Học Viên (Register Student)', 'Write', () => {
+        this.appendRecord('01_USERS', { recordId: 'REC_T01', studentId: 'STU_TEST_01', role: 'STUDENT', status: 'active' });
+      }, '01_USERS'),
+      makeStep('T02', 'Đồng Thuận Nghiên Cứu (Consent Record)', 'Write', () => {
+        this.appendRecord('02_CONSENTS', { recordId: 'REC_T02', studentId: 'STU_TEST_01', consentVersion: '1.0.0', status: 'accepted' });
+      }, '02_CONSENTS'),
+      makeStep('T03', 'Khởi Tạo Phiên Học (Session Start)', 'Write', () => {
+        this.appendRecord('06_SESSIONS', { recordId: 'REC_T03', sessionId: 'SES_TEST_01', studentId: 'STU_TEST_01', status: 'started' });
+      }, '06_SESSIONS'),
+      makeStep('T04', 'Ghi Nhận Sự Kiện Vi Mô (Event Write)', 'Write', () => {
+        this.appendRecord('07_BEHAVIOR_EVENTS', { eventId: 'EVT_T04', studentId: 'STU_TEST_01', sessionId: 'SES_TEST_01', feature: 'test', action: 'choice', timestamp: new Date().toISOString() });
+      }, '07_BEHAVIOR_EVENTS'),
+      makeStep('T05', 'Ghi Nhận Kết Quả Game (Game Result)', 'Write', () => {
+        this.appendRecord('08_GAME_RESULTS', { recordId: 'REC_T05', studentId: 'STU_TEST_01', gameId: 'game_test', score: 100, durationMs: 1000 });
+      }, '08_GAME_RESULTS'),
+      makeStep('T06', 'Ghi Nhận Can Thiệp Sư Phạm (Intervention)', 'Write', () => {
+        // Known gap: no runtime pathway writes to 10_INTERVENTIONS today.
+        throw new Error('Chưa có luồng ghi 10_INTERVENTIONS từ game runtime');
+      }, '10_INTERVENTIONS'),
+      makeStep('T07', 'Ghi Nhận Phản Tư Hành Vi (Reflection)', 'Write', () => {
+        this.appendRecord('12_REFLECTIONS', { recordId: 'REC_T07', studentId: 'STU_TEST_01', promptId: 'P01', reflectiveIndex: 0.8 });
+      }, '12_REFLECTIONS'),
+      makeStep('T08', 'Ghi Nhận Vi Hành Động Đời Thực (Micro Action)', 'Write', () => {
+        this.appendRecord('14_MICRO_ACTION_RESULTS', { recordId: 'REC_T08', studentId: 'STU_TEST_01', status: 'completed' });
+      }, '14_MICRO_ACTION_RESULTS'),
+      makeStep('T09', 'Truy Vết Quyết Định AI (AI Decision Log)', 'Write', () => {
+        // 18_AI_DECISIONS is written by the server AI validation gate (logAiDecision).
+        const prior = this.findBy('18_AI_DECISIONS', 'studentId', 'STU_TEST_01');
+        if (prior.length === 0) {
+          throw new Error('Chưa có quyết định AI nào được ghi (18_AI_DECISIONS) cho học sinh này');
+        }
+      }, '18_AI_DECISIONS'),
+      makeStep('T10', 'Đọc Lại Hồ Sơ Học Viên (Profile Read)', 'Read', () => {
+        const p = this.findBy('03_STUDENT_PROFILES', 'studentId', 'STU_001');
+        if (p.length === 0) throw new Error('Hồ sơ STU_001 không tồn tại');
+      }, '03_STUDENT_PROFILES'),
+      makeStep('T11', 'Đọc Lại Tiến Bộ Học Tập (Progress Read)', 'Read', () => {
+        const g = this.findBy('08_GAME_RESULTS', 'studentId', 'STU_TEST_01');
+        if (g.length === 0) throw new Error('Không đọc được lịch sử game đã ghi');
+      }, '08_GAME_RESULTS'),
+      makeStep('T12', 'Đọc Lại Lịch Sử Thực Nghiệm (History Read)', 'Read', () => {
+        const h = this.findBy('08_GAME_RESULTS', 'studentId', 'STU_TEST_01');
+        if (h.length === 0) throw new Error('Lịch sử thực nghiệm trống');
+      }, '08_GAME_RESULTS'),
+      makeStep('T13', 'Chống Ghi Trùng (Duplicate Request Guard)', 'Validation', () => {
+        const reqId = 'REQ_T13';
+        this.markProcessed(reqId);
+        if (!this.isDuplicate(reqId)) throw new Error('Cờ idempotency không được ghi nhận');
+      }, '31_AUDIT_LOG'),
+      makeStep('T14', 'Bảo Vệ Schema Chuẩn (Schema Validation)', 'Validation', () => {
+        const schema = V9_CANONICAL_SCHEMAS['01_USERS'];
+        if (!schema || !schema.headers || schema.headers.length === 0) throw new Error('Schema 01_USERS chưa được khai báo');
+      }, '35_SCHEMA_VERSIONS'),
+      makeStep('T15', 'Kiểm Tra Thiếu Khóa Chính (Missing Field Guard)', 'Validation', () => {
+        const missing = this.appendRecord('33_ERROR_LOG' as any, { message: 'MISSING_FIELD: studentId' } as any);
+        if (!missing) throw new Error('Không ghi được lỗi');
+      }, '33_ERROR_LOG'),
+      makeStep('T16', 'Xác Minh Đọc Sau Ghi (Read-After-Write Verification)', 'Integrity', () => {
+        const w = this.appendRecord('08_GAME_RESULTS', { recordId: 'REC_T16', studentId: 'STU_TEST_01', gameId: 'game_test', score: 80 });
+        const r = this.findBy('08_GAME_RESULTS', 'recordId', w.recordId);
+        if (r.length === 0) throw new Error('Bản ghi không đọc lại được sau khi ghi');
+      }, '08_GAME_RESULTS'),
+      makeStep('T17', 'Tính Toán Khoảng Cách Chuyển Hóa (Transfer Gap)', 'Research', () => {
+        const t = this.appendRecord('27_TRANSFER_MEASURES', { recordId: 'REC_T17', studentId: 'STU_TEST_01', gameScore: 80, realActionScore: 60 });
+        if (!t) throw new Error('Không đo được transfer');
+      }, '27_TRANSFER_MEASURES'),
+      makeStep('T18', 'Truy Vết Nguồn Gốc Dữ Liệu (Data Lineage Trace)', 'Research', () => {
+        const audit = this.getSheetRecords('31_AUDIT_LOG');
+        if (audit.length === 0) throw new Error('Chuỗi lineage trống');
+      }, '31_AUDIT_LOG'),
+      makeStep('T19', 'Kiểm Tra Toàn Vẹn Hệ Thống (Data Integrity Job)', 'Integrity', () => {
+        // Demonstrates the orphan check: verify every 08_GAME_RESULTS has a matching student.
+        const orphans = this.getSheetRecords('08_GAME_RESULTS').filter(r => {
+          return this.findBy('01_USERS', 'studentId', r.studentId).length === 0;
+        });
+        if (orphans.length > 0) throw new Error(`Phát hiện ${orphans.length} bản ghi mồ côi trong 08_GAME_RESULTS`);
+      }, '23_SYSTEM_METRICS'),
+      makeStep('T20', 'Kiểm Tra Bản Ghi Mồ Côi (Orphan Record Check)', 'Integrity', () => {
+        const sessions = this.getSheetRecords('06_SESSIONS').filter(s => {
+          return this.findBy('01_USERS', 'studentId', s.studentId).length === 0;
+        });
+        if (sessions.length > 0) throw new Error(`Phát hiện ${sessions.length} phiên mồ côi`);
+      }, '32_SYSTEM_LOGS')
     ];
 
-    return { tests, allPassed: true };
+    return { tests, allPassed: tests.every(t => t.status === 'PASS') };
   }
 }

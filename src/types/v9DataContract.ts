@@ -255,7 +255,9 @@ export interface V9DataQualityMetrics {
   syncQueueSize: number;
   dataFreshnessSeconds: number;
   lastSyncTimestamp: string;
-  dataSource: 'GOOGLE_SHEETS' | 'APPS_SCRIPT_PROXY' | 'LOCAL_OFFLINE_QUEUE';
+  dataSource: 'GOOGLE_SHEETS' | 'APPS_SCRIPT_PROXY' | 'LOCAL_OFFLINE_QUEUE' | 'IN_MEMORY_MOCK';
+  demoMode?: boolean;
+  message?: string;
 }
 
 // Section 43: V9 E2E Integrity Test Result

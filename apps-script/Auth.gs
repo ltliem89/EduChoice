@@ -5,27 +5,32 @@
 
 function authenticate_(e) {
   const body = parseBody_(e);
-  const authHeader = (e && e.parameter && e.parameter.auth) || (body && body.authContext);
-  const roleFromClient = (body && body.role) || (e && e.parameter && e.parameter.role) || "STUDENT";
-  const userId = (body && body.userId) || (e && e.parameter && e.parameter.studentId) || (body && body.studentId) || "STU_ANONYMOUS";
+  const userId = (body && body.userId) || (e && e.parameter && e.parameter.studentId) || (body && body.studentId) || "";
   const schoolId = (body && body.schoolId) || (e && e.parameter && e.parameter.schoolId) || "SCH_DEFAULT";
 
-  // Verify Identity against 01_USERS sheet
-  let verifiedRole = roleFromClient;
+  // SECURITY (fail-closed): the role is NEVER taken from the client. Identity is verified
+  // against 01_USERS on the server side only. Missing/unknown identity becomes GUEST
+  // (unauthenticated) so no route that needs a real role can be reached.
+  let verifiedRole = "GUEST";
+  let authenticated = false;
   try {
     const userRepo = new SheetRepository("01_USERS");
-    const matched = userRepo.findBy("studentId", userId);
-    if (matched && matched.length > 0) {
-      verifiedRole = matched[0].role || roleFromClient;
+    if (userId) {
+      const matched = userRepo.findBy("studentId", userId);
+      if (matched && matched.length > 0) {
+        verifiedRole = matched[0].role || "STUDENT";
+        authenticated = true;
+      }
     }
   } catch (err) {
-    // Fallback for bootstrap
+    // Sheets not initialized yet: remain GUEST instead of trusting the client.
   }
 
   return {
-    userId: userId,
+    userId: userId || "GUEST",
     sessionId: (body && body.sessionId) || "SES_" + Utilities.getUuid(),
     role: verifiedRole,
+    authenticated: authenticated,
     schoolId: schoolId,
     timestamp: new Date().toISOString()
   };

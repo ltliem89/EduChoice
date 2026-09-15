@@ -1,10 +1,12 @@
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
+import { createHash } from 'crypto';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import { V9DataEngine } from './server/v9DataEngine';
 import { V10DataEngine } from './server/v10DataEngine';
+import type { V10Role } from './src/types/v10DataContract';
 
 dotenv.config();
 
@@ -87,12 +89,203 @@ const store: MemoryStore = {
     }
   ],
   sheetsConfig: {
-    spreadsheetId: '1EduChoice_Sheet_Sample_Data_2026',
+    spreadsheetId: process.env.SPREADSHEET_ID || '',
     sheetName: '04_BEHAVIOR_EVENTS',
-    appsScriptUrl: 'https://script.google.com/macros/s/AKfycbz_sample/exec',
-    lastSyncedAt: new Date().toISOString()
+    appsScriptUrl: process.env.APPS_SCRIPT_URL || '',
+    lastSyncedAt: undefined
   }
 };
+
+// ==========================================
+// AUTHENTICATION & AUTHORIZATION (Demo Trust Boundary)
+// ==========================================
+// IMPORTANT (HIGH/CRITICAL fix): the server NEVER trusts a role/userId supplied by the
+// client. Identity is resolved ONLY from a server-side allow-list (to be replaced by a real
+// Google Identity / OAuth provider). Unknown identities become GUEST (unauthenticated) and
+// cannot access admin, config, or cross-student operations.
+const DEMO_USERS: Record<string, { role: string; schoolId: string }> = {
+  STU_001: { role: 'STUDENT', schoolId: 'SCH_001' },
+  STU_002: { role: 'STUDENT', schoolId: 'SCH_001' },
+  STU_003: { role: 'STUDENT', schoolId: 'SCH_001' },
+  TEA_001: { role: 'TEACHER', schoolId: 'SCH_001' },
+  ADM_001: { role: 'SCHOOL_ADMIN', schoolId: 'SCH_001' },
+  RSR_001: { role: 'RESEARCHER', schoolId: 'SCH_001' },
+  SYSADMIN: { role: 'SUPER_ADMIN', schoolId: 'SYS' }
+};
+
+const ROLE_LEVELS: Record<string, number> = {
+  STUDENT: 10,
+  TEACHER: 30,
+  CLASS_TEACHER: 40,
+  CONTENT_ADMIN: 50,
+  RESEARCHER: 60,
+  RESEARCH_ADMIN: 70,
+  SCHOOL_ADMIN: 80,
+  SUPER_ADMIN: 100
+};
+
+interface Identity {
+  userId: string;
+  userRole: string;
+  authenticated: boolean;
+  schoolId: string;
+  claimedRole?: string;
+}
+
+// Resolve identity from verified server-side data only.
+// bodyUserId/bodyRole are accepted as hints for demo compatibility but are NEVER trusted.
+function resolveIdentity(req: express.Request, bodyUserId?: string, bodyRole?: string): Identity {
+  const headerUserId = (req.headers['x-user-id'] as string) || '';
+  const userId = headerUserId || bodyUserId || '';
+  const claimedRole = (req.headers['x-role'] as string) || bodyRole || '';
+  const known = DEMO_USERS[userId];
+  if (!known) {
+    return { userId: userId || 'GUEST', userRole: 'GUEST', authenticated: false, schoolId: 'SCH_DEFAULT', claimedRole };
+  }
+  return { userId, userRole: known.role, authenticated: true, schoolId: known.schoolId };
+}
+
+function roleLevel(role: string): number {
+  return ROLE_LEVELS[role] ?? 0;
+}
+
+// Sends 403 and returns false if the identity does not reach the minimum role level.
+function denyIfBelowRole(res: express.Response, identity: Identity, minRole: string, message?: string): boolean {
+  if (roleLevel(identity.userRole) < roleLevel(minRole)) {
+    res.status(403).json({
+      ok: false,
+      error: {
+        code: 'FORBIDDEN_ROLE',
+        message: message || `Yêu cầu vai trò >= ${minRole} để thực hiện thao tác này.`
+      }
+    });
+    return true;
+  }
+  return false;
+}
+
+// Student scoping guard (IDOR fix): low-privilege identities may only access their own data.
+function isStudentAllowed(identity: Identity, studentId: string): boolean {
+  if (roleLevel(identity.userRole) >= roleLevel('TEACHER')) return true;
+  return identity.authenticated && identity.userId === studentId;
+}
+
+function denyIfCrossStudent(res: express.Response, identity: Identity, studentId: string): boolean {
+  if (!isStudentAllowed(identity, studentId)) {
+    res.status(403).json({
+      ok: false,
+      error: {
+        code: 'FORBIDDEN_STUDENT_ACCESS',
+        message: 'Không có quyền truy cập hồ sơ của học sinh khác.'
+      }
+    });
+    return true;
+  }
+  return false;
+}
+
+// ==========================================
+// AI DECISION VALIDATION GATE & DECISION LOG (18_AI_DECISIONS)
+// ==========================================
+// HIGH/CRITICAL fix: Gemini output is validated against allow-lists and business rules before
+// being returned. Invalid output falls back to the deterministic engine. Every decision is logged.
+const VALID_INTERVENTION_TYPES = ['embedded', 'pre_game', 'post_reflection', 'just_in_time'];
+const AI_DECISION_LOG: any[] = [];
+
+function hashSnapshot(value: any): string {
+  try {
+    return createHash('sha256').update(JSON.stringify(value || {})).digest('hex').slice(0, 16);
+  } catch {
+    return `sh_${Date.now().toString(36)}`;
+  }
+}
+
+interface SanitizedDecision {
+  decision: any;
+  evidence: any;
+  safety: any;
+  issues: string[];
+  rawDecision: any;
+}
+
+function sanitizeAdaptiveDecision(raw: any, candidateGames: any[], approvedToolkits: any[]): SanitizedDecision | null {
+  const rawDecision = raw?.decision;
+  if (!rawDecision) return null;
+
+  const gameIds = new Set((candidateGames || []).map((g: any) => g && g.gameId).filter(Boolean));
+  const toolkitIds = new Set((approvedToolkits || []).map((t: any) => t && t.id).filter(Boolean));
+  const issues: string[] = [];
+
+  const nextGameId = gameIds.has(rawDecision.nextGameId) ? String(rawDecision.nextGameId) : '';
+  if (!nextGameId) issues.push('NEXT_GAME_NOT_IN_ALLOWLIST');
+
+  const toolkitId = toolkitIds.has(rawDecision.toolkitId) ? String(rawDecision.toolkitId) : '';
+  if (!toolkitId) issues.push('TOOLKIT_NOT_IN_ALLOWLIST');
+
+  const duration = Number(rawDecision.durationMinutes == null ? 3 : rawDecision.durationMinutes);
+  if (Number.isNaN(duration) || duration < 1 || duration > 5) issues.push('DURATION_OUT_OF_RANGE_1_5');
+
+  const difficulty = Number(rawDecision.difficulty == null ? 1 : rawDecision.difficulty);
+  if (Number.isNaN(difficulty) || difficulty < 1 || difficulty > 3) issues.push('DIFFICULTY_OUT_OF_RANGE_1_3');
+
+  const interventionType = VALID_INTERVENTION_TYPES.includes(rawDecision.interventionType)
+    ? rawDecision.interventionType
+    : 'embedded';
+
+  const confidence = Number(raw?.evidence?.confidence == null ? 0 : raw.evidence.confidence);
+  const safetyStatus = raw?.safety?.status === 'alert' ? 'alert' : 'normal';
+
+  if (issues.length > 0) return null;
+
+  return {
+    decision: {
+      nextGameId,
+      durationMinutes: Math.min(Math.max(duration, 1), 5),
+      difficulty: Math.min(Math.max(difficulty, 1), 3),
+      toolkitId,
+      interventionType
+    },
+    evidence: {
+      primaryConstruct: raw?.evidence?.primaryConstruct || 'Planning',
+      confidence: Math.max(0, Math.min(1, confidence)),
+      reasoning: String(raw?.evidence?.reasoning || '')
+    },
+    safety: { status: safetyStatus },
+    issues,
+    rawDecision
+  };
+}
+
+function logAiDecision(opts: {
+  input: any;
+  sanitized: SanitizedDecision | null;
+  fallbackUsed: boolean;
+  validationStatus: 'valid' | 'fallback' | 'not_generated';
+}): any {
+  const decisionId = `AI_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 6)}`;
+  const entry = {
+    decisionId,
+    studentId: opts.input?.studentModel?.userId || 'UNKNOWN',
+    sessionId: opts.input?.sessionId || '',
+    inputSnapshotHash: hashSnapshot(opts.input?.recentEvents || []),
+    modelProvider: 'google',
+    modelName: 'gemini-3.8-flash',
+    promptVersion: 'v10.0.0',
+    policyVersion: 'v10.0.0',
+    decisionJson: opts.sanitized?.rawDecision || null,
+    confidence: opts.sanitized?.evidence?.confidence ?? 0,
+    fallbackUsed: opts.fallbackUsed,
+    validationStatus: opts.validationStatus,
+    createdAt: new Date().toISOString()
+  };
+  AI_DECISION_LOG.unshift(entry);
+  if (AI_DECISION_LOG.length > 200) AI_DECISION_LOG.pop();
+  // Also persist into the V9 canonical ledger (18_AI_DECISIONS)
+  try {
+    V9DataEngine.appendRecord('18_AI_DECISIONS', { ...entry, recordId: decisionId });
+  } catch { /* non-fatal */ }
+  return entry;
+}
 
 // ==========================================
 // API ROUTES
@@ -103,6 +296,9 @@ app.get('/api/health', (req, res) => {
     status: 'ok',
     version: '3.0.0',
     geminiConfigured: Boolean(process.env.GEMINI_API_KEY),
+    authMode: 'demo-server-side-allowlist',
+    dataLayer: 'in-memory-demo',
+    sheetsConfigured: Boolean(process.env.APPS_SCRIPT_URL && process.env.APPS_SCRIPT_URL !== ''),
     timestamp: new Date().toISOString()
   });
 });
@@ -546,6 +742,8 @@ app.post('/api/ai/adaptive-reason', async (req, res) => {
 }
 `;
 
+    let geminiParsed: any = null;
+
     if (gemini && candidateGames && candidateGames.length > 0) {
       const prompt = `
 Bạn là AI Suy luận Thích ứng Giáo dục (Adaptive Engine của EduChoice-AI v3).
@@ -568,6 +766,9 @@ ${JSON.stringify(approvedToolkits?.map((t: any) => ({ id: t.id, nameVi: t.nameVi
 Quy định ngặt nghèo:
 - "nextGameId" BẮT BUỘC phải nằm trong danh sách game ứng viên.
 - "toolkitId" BẮT BUỘC phải nằm trong danh sách approvedToolkits.
+- "durationMinutes" chỉ từ 1 đến 5.
+- "difficulty" chỉ từ 1 đến 3.
+- "interventionType" thuộc một trong: embedded | pre_game | post_reflection | just_in_time.
 - KHÔNG đưa ra chẩn đoán bệnh lý hay tâm thần học sinh.
 - Trả về JSON đúng cấu trúc:
 ${reasoningSchema}
@@ -584,14 +785,27 @@ ${reasoningSchema}
         });
 
         const text = response.text?.trim() || '';
-        const parsed = JSON.parse(text);
-        return res.json({
-          ...parsed,
-          source: 'gemini'
-        });
+        geminiParsed = JSON.parse(text);
       } catch (err) {
         console.warn('Gemini adaptive reasoning fallback triggered:', err);
       }
+    }
+
+    // Validation gate: only a sanitized Gemini decision inside the allowed sets may be returned.
+    if (geminiParsed) {
+      const sanitized = sanitizeAdaptiveDecision(geminiParsed, candidateGames, approvedToolkits);
+      if (sanitized) {
+        logAiDecision({ input: req.body, sanitized, fallbackUsed: false, validationStatus: 'valid' });
+        return res.json({
+          ...sanitized,
+          validationStatus: 'valid',
+          source: 'gemini'
+        });
+      }
+      console.warn('Gemini adaptive decision failed allow-list validation; using deterministic fallback.', geminiParsed);
+      logAiDecision({ input: req.body, sanitized: null, fallbackUsed: true, validationStatus: 'fallback' });
+    } else {
+      logAiDecision({ input: req.body, sanitized: null, fallbackUsed: true, validationStatus: 'not_generated' });
     }
 
     // Fallback deterministic recommendation
@@ -686,17 +900,27 @@ app.post('/api/audit-logs', (req, res) => {
 app.get('/api/sheets/config', (req, res) => {
   res.json({
     ...store.sheetsConfig,
+    configured: Boolean(store.sheetsConfig.appsScriptUrl),
     eventCount: store.behaviorEvents.length
   });
 });
 
 app.post('/api/sheets/sync', (req, res) => {
-  store.sheetsConfig.lastSyncedAt = new Date().toISOString();
-  res.json({
-    success: true,
-    message: `Đã đồng bộ hóa thành công ${store.behaviorEvents.length} bản ghi sự kiện hành vi vào Google Sheets [04_BEHAVIOR_EVENTS].`,
-    syncedAt: store.sheetsConfig.lastSyncedAt,
-    targetSheet: store.sheetsConfig.sheetName
+  const configured = Boolean(store.sheetsConfig.appsScriptUrl);
+  if (!configured) {
+    return res.status(501).json({
+      success: false,
+      code: 'SHEETS_NOT_CONFIGURED',
+      message: 'Chưa cấu hình Google Sheets Apps Script (đặt biến môi trường APPS_SCRIPT_URL và SPREADSHEET_ID). Hệ thống hiện đang ở chế độ demo in-memory, không có dữ liệu nào được ghi ra Sheets.',
+      syncedAt: null
+    });
+  }
+  // Honest status: the Node bridge does not (yet) push to Apps Script. Never claim success.
+  res.status(501).json({
+    success: false,
+    code: 'SYNC_NOT_IMPLEMENTED',
+    message: 'Đồng bộ tới Apps Script chưa được triển khai ở Node bridge. Vui lòng cấu hình apps script deployment và gọi trực tiếp.',
+    syncedAt: null
   });
 });
 
@@ -732,13 +956,27 @@ const handleV9Write = (sheetName: any, record: any, req: express.Request, res: e
 // 1. Student Registration & Consent
 app.post('/api/v9/register', (req, res) => {
   const user = req.body;
-  V9DataEngine.appendRecord('01_USERS', user);
-  V9DataEngine.appendRecord('03_STUDENT_PROFILES', user);
-  res.json({ ok: true, data: user });
+  // Self-registration may only create STUDENT roles; real role assignment happens server-side.
+  const studentRecord = { ...user, role: 'STUDENT' };
+  V9DataEngine.appendRecord('01_USERS', studentRecord);
+  V9DataEngine.appendRecord('03_STUDENT_PROFILES', studentRecord);
+  res.json({ ok: true, data: studentRecord });
 });
 
 app.post('/api/v9/user/upsert', (req, res) => {
-  const user = req.body.user || req.body;
+  // 01_USERS holds the entire role model for the system. Staff may modify anyone; a STUDENT
+  // may only update their own non-privileged fields (name/avatar/badge/grade/cohort).
+  const identity = resolveIdentity(req, req.body?.userId, req.body?.role);
+  const candidate = req.body.user || req.body;
+  const targetStudentId = candidate.studentId || candidate.userId;
+  const isStudentSelfEdit =
+    identity.authenticated &&
+    identity.userRole === 'STUDENT' &&
+    targetStudentId === identity.userId &&
+    candidate.role == null &&
+    candidate.status == null;
+  if (!isStudentSelfEdit && denyIfBelowRole(res, identity, 'TEACHER', 'Chỉ giáo viên/ban quản lý mới được cập nhật hồ sơ 01_USERS.')) return;
+  const user = { ...candidate, updatedBy: identity.userId };
   handleV9Write('01_USERS', user, req, res);
 });
 
@@ -794,19 +1032,25 @@ app.post('/api/v9/teacher/label', (req, res) => {
 
 // 9. Read Endpoints
 app.get('/api/v9/student/profile', (req, res) => {
-  const studentId = (req.query.studentId as string) || 'STU_001';
+  const identity = resolveIdentity(req, undefined, (req.query.role as string) || undefined);
+  const studentId = (req.query.studentId as string) || identity.userId;
+  if (denyIfCrossStudent(res, identity, studentId)) return;
   const profiles = V9DataEngine.findBy('03_STUDENT_PROFILES', 'studentId', studentId);
   res.json({ ok: true, data: profiles[0] || null });
 });
 
 app.get('/api/v9/student/history', (req, res) => {
-  const studentId = (req.query.studentId as string) || 'STU_001';
+  const identity = resolveIdentity(req, undefined, (req.query.role as string) || undefined);
+  const studentId = (req.query.studentId as string) || identity.userId;
+  if (denyIfCrossStudent(res, identity, studentId)) return;
   const history = V9DataEngine.findBy('08_GAME_RESULTS', 'studentId', studentId);
   res.json({ ok: true, data: { history } });
 });
 
 app.get('/api/v9/student/progress', (req, res) => {
-  const studentId = (req.query.studentId as string) || 'STU_001';
+  const identity = resolveIdentity(req, undefined, (req.query.role as string) || undefined);
+  const studentId = (req.query.studentId as string) || identity.userId;
+  if (denyIfCrossStudent(res, identity, studentId)) return;
   const results = V9DataEngine.findBy('08_GAME_RESULTS', 'studentId', studentId);
   const microActions = V9DataEngine.findBy('14_MICRO_ACTION_RESULTS', 'studentId', studentId);
   res.json({
@@ -822,6 +1066,8 @@ app.get('/api/v9/student/progress', (req, res) => {
 });
 
 app.get('/api/v9/research/metrics', (req, res) => {
+  const identity = resolveIdentity(req, undefined, (req.query.role as string) || undefined);
+  if (denyIfBelowRole(res, identity, 'RESEARCHER', 'Chỉ nhà nghiên cứu mới xem được bộ chỉ số nghiên cứu.')) return;
   const quality = V9DataEngine.getDataQualityMetrics();
   const transfers = V9DataEngine.getSheetRecords('27_TRANSFER_MEASURES', 50);
   const problems = V9DataEngine.getSheetRecords('29_PROBLEM_RECOGNITION', 50);
@@ -841,19 +1087,25 @@ app.get('/api/v9/research/metrics', (req, res) => {
   });
 });
 
-// 10. Canonical 39 Sheets Explorer
+// 10. Canonical 39 Sheets Explorer (staff/research only)
 app.get('/api/v9/sheets/overview', (req, res) => {
+  const identity = resolveIdentity(req, undefined, (req.query.role as string) || undefined);
+  if (denyIfBelowRole(res, identity, 'TEACHER', 'Cần quyền giáo viên trở lên để xem kho dữ liệu canoncical.')) return;
   const overview = V9DataEngine.getOverview();
   res.json({ ok: true, data: overview });
 });
 
 app.get('/api/v9/sheets/records/:sheetName', (req, res) => {
+  const identity = resolveIdentity(req, undefined, (req.query.role as string) || undefined);
+  if (denyIfBelowRole(res, identity, 'TEACHER', 'Cần quyền giáo viên trở lên để xem bản ghi sheets.')) return;
   const { sheetName } = req.params;
   const records = V9DataEngine.getSheetRecords(sheetName as any, 100);
   res.json({ ok: true, data: records });
 });
 
 app.post('/api/v9/sheets/initialize', (req, res) => {
+  const identity = resolveIdentity(req, req.body?.userId, req.body?.role);
+  if (denyIfBelowRole(res, identity, 'SCHOOL_ADMIN', 'Chỉ ban quản lý trường mới khởi tạo được cấu trúc sheets.')) return;
   res.json({
     ok: true,
     message: 'Khởi tạo thành công toàn bộ 39 trang tính Google Sheets chuẩn V9 với Header khóa cứng.',
@@ -908,9 +1160,11 @@ app.get('/api/v10/config/public', (req, res) => {
 });
 
 app.post('/api/v10/config/system', (req, res) => {
+  // System config is privileged: role is resolved server-side, never taken from the body.
+  const identity = resolveIdentity(req, req.body?.userId, req.body?.role);
+  if (denyIfBelowRole(res, identity, 'SUPER_ADMIN', 'Chỉ SUPER_ADMIN mới cập nhật được cấu hình hệ thống.')) return;
   const updates = req.body.config || req.body;
-  const actor = req.body.userId || 'SUPER_ADMIN';
-  const updated = V10DataEngine.updateSystemConfig(updates, actor);
+  const updated = V10DataEngine.updateSystemConfig(updates, identity.userId);
   res.json({
     ok: true,
     requestId: `REQ_${Date.now()}`,
@@ -918,15 +1172,44 @@ app.post('/api/v10/config/system', (req, res) => {
   });
 });
 
+// Observability for AI decision log (18_AI_DECISIONS) — staff & research
+app.get('/api/v10/ai-decisions', (req, res) => {
+  const identity = resolveIdentity(req);
+  if (denyIfBelowRole(res, identity, 'TEACHER', 'Cần quyền giáo viên trở lên để xem nhật ký quyết định AI.')) return;
+  res.json({
+    ok: true,
+    requestId: `REQ_${Date.now()}`,
+    data: AI_DECISION_LOG.slice(0, 100)
+  });
+});
+
 // 4. Generic Field Write & Read Engine (FIELD_MAP)
+const STUDENT_SELF_EDIT_FIELDS = new Set([
+  'student.fullName',
+  'student.grade',
+  'student.school',
+  'goal.title',
+  'goal.category',
+  'goal.target'
+]);
+
 app.post('/api/v10/field/write', (req, res) => {
   try {
-    const { recordId, fields, role, userId, reason } = req.body;
+    // HIGH fix: never trust client-supplied role for authorization.
+    const identity = resolveIdentity(req, req.body?.userId, req.body?.role);
+    const { recordId, fields, reason } = req.body;
+    const isSelfEdit =
+      identity.authenticated &&
+      identity.userRole === 'STUDENT' &&
+      recordId === identity.userId &&
+      Boolean(fields) &&
+      Object.keys(fields).every(fk => STUDENT_SELF_EDIT_FIELDS.has(fk));
+    if (!isSelfEdit && denyIfBelowRole(res, identity, 'TEACHER', 'Cần quyền giáo viên trở lên để ghi dữ liệu này.')) return;
     const writeResult = V10DataEngine.writeField(
       recordId || `REC_${Date.now()}`,
       fields || {},
-      role || 'TEACHER',
-      userId || 'USER_DEFAULT',
+      identity.userRole as V10Role,
+      identity.userId,
       reason
     );
     res.json({
@@ -947,10 +1230,11 @@ app.post('/api/v10/field/write', (req, res) => {
 
 app.get('/api/v10/field/read', (req, res) => {
   try {
+    const identity = resolveIdentity(req, undefined, (req.query.role as string) || undefined);
+    if (denyIfBelowRole(res, identity, 'TEACHER', 'Cần quyền giáo viên trở lên để đọc dữ liệu.')) return;
     const recordId = (req.query.recordId as string) || '';
     const fieldIds = ((req.query.fields as string) || '').split(',').filter(Boolean);
-    const role = (req.query.role as any) || 'TEACHER';
-    const data = V10DataEngine.readFields(recordId, fieldIds, role);
+    const data = V10DataEngine.readFields(recordId, fieldIds, identity.userRole as V10Role);
     res.json({
       ok: true,
       requestId: `REQ_${Date.now()}`,
@@ -966,8 +1250,10 @@ app.get('/api/v10/field/read', (req, res) => {
 
 // 5. Goals & Vertical Slice (04_GOALS)
 app.post('/api/v10/goal/create', (req, res) => {
+  const identity = resolveIdentity(req, req.body?.userId, req.body?.role);
+  if (denyIfBelowRole(res, identity, 'TEACHER', 'Chỉ giáo viên mới tạo được mục tiêu học tập.')) return;
   const goal = req.body;
-  const created = V10DataEngine.createGoal(goal, goal.role || 'TEACHER', goal.userId || 'TEACHER');
+  const created = V10DataEngine.createGoal(goal, identity.userRole as V10Role, identity.userId);
   res.json({
     ok: true,
     requestId: `REQ_${Date.now()}`,
@@ -979,7 +1265,9 @@ app.post('/api/v10/goal/create', (req, res) => {
 });
 
 app.get('/api/v10/student/goals', (req, res) => {
-  const studentId = (req.query.studentId as string) || 'STU_001';
+  const identity = resolveIdentity(req, undefined, (req.query.role as string) || undefined);
+  const studentId = (req.query.studentId as string) || identity.userId;
+  if (denyIfCrossStudent(res, identity, studentId)) return;
   const goals = V10DataEngine.getGoalsByStudent(studentId);
   res.json({
     ok: true,
@@ -990,7 +1278,9 @@ app.get('/api/v10/student/goals', (req, res) => {
 
 // 6. Student Profile
 app.get('/api/v10/student/profile', (req, res) => {
-  const studentId = (req.query.studentId as string) || 'STU_001';
+  const identity = resolveIdentity(req, undefined, (req.query.role as string) || undefined);
+  const studentId = (req.query.studentId as string) || identity.userId;
+  if (denyIfCrossStudent(res, identity, studentId)) return;
   const profiles = V9DataEngine.findBy('03_STUDENT_PROFILES', 'studentId', studentId);
   res.json({
     ok: true,
@@ -1000,7 +1290,11 @@ app.get('/api/v10/student/profile', (req, res) => {
 });
 
 app.post('/api/v10/student/profile', (req, res) => {
-  const profile = req.body;
+  // IDOR fix: students may only write their own profile; staff may write any profile.
+  const identity = resolveIdentity(req, req.body?.userId, req.body?.role);
+  const targetStudentId = (req.body.studentId as string) || identity.userId;
+  if (denyIfCrossStudent(res, identity, targetStudentId)) return;
+  const profile = { ...req.body, updatedBy: identity.userId };
   handleV9Write('03_STUDENT_PROFILES', profile, req, res);
 });
 

@@ -53,8 +53,10 @@ export class V10Client {
   ): Promise<ApiResponse<T>> {
     const method = options?.method || (options?.body ? 'POST' : 'GET');
     const requestId = `REQ_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 7)}`;
-    const role = options?.role || 'STUDENT';
-    const userId = options?.userId || 'STU_CURRENT';
+    // NOTE: role is NEVER defaulted/claimed client-side as SUPER_ADMIN. The server ignores any
+    // client role claim and resolves the real identity from its own allow-list (see server.ts).
+    const role = options?.role;
+    const userId = options?.userId || 'STU_001';
     const cleanRoute = route.replace(/^\/+/, '');
 
     const gatewayMode = this.getGatewayMode();
@@ -66,8 +68,8 @@ export class V10Client {
         const queryParams = new URLSearchParams({
           route: cleanRoute,
           requestId,
-          role,
           userId,
+          ...(role ? { role } : {}),
           ...(options?.params || {})
         });
 
@@ -80,8 +82,8 @@ export class V10Client {
         if (method === 'POST' && options?.body) {
           fetchOptions.body = JSON.stringify({
             requestId,
-            role,
             userId,
+            ...(role ? { role } : {}),
             ...options.body
           });
         }
@@ -107,7 +109,7 @@ export class V10Client {
       
       const payload = method === 'POST' ? {
         requestId,
-        role,
+        ...(role ? { role } : {}),
         userId,
         ...options?.body
       } : undefined;
@@ -165,11 +167,13 @@ export class V10Client {
     recordId: string,
     fields: Record<string, any>,
     role: V10Role = 'TEACHER',
-    reason?: string
+    reason?: string,
+    userId?: string
   ): Promise<ApiResponse> {
     return this.request('field/write', {
       method: 'POST',
       role,
+      userId,
       body: { recordId, fields, reason }
     });
   }
@@ -180,11 +184,13 @@ export class V10Client {
   public static async readFields(
     recordId: string,
     fieldIds: string[],
-    role: V10Role = 'TEACHER'
+    role: V10Role = 'TEACHER',
+    userId?: string
   ): Promise<ApiResponse> {
     return this.request('field/read', {
       method: 'GET',
       role,
+      userId,
       params: { recordId, fields: fieldIds.join(',') }
     });
   }
@@ -198,10 +204,12 @@ export class V10Client {
     category?: string;
     target?: number;
     role?: V10Role;
+    userId?: string;
   }): Promise<ApiResponse> {
     return this.request('goal/create', {
       method: 'POST',
       role: goalData.role || 'TEACHER',
+      userId: goalData.userId,
       body: {
         studentId: goalData.studentId,
         goalTitle: goalData.goalTitle,
@@ -217,9 +225,10 @@ export class V10Client {
   /**
    * Section 72: Read goals for a student
    */
-  public static async loadGoals(studentId: string): Promise<ApiResponse> {
+  public static async loadGoals(studentId: string, userId?: string): Promise<ApiResponse> {
     return this.request('student/goals', {
       method: 'GET',
+      userId,
       params: { studentId }
     });
   }
@@ -239,9 +248,11 @@ export class V10Client {
   }
 
   public static async updateSystemConfig(config: Partial<V10SystemConfig>): Promise<ApiResponse> {
+    // Admin panel sends the server-side SUPER_ADMIN account id; the server resolves the
+    // role from its own allow-list (never from client-supplied role strings).
     return this.request('config/system', {
       method: 'POST',
-      role: 'SUPER_ADMIN',
+      userId: 'SYSADMIN',
       body: { config }
     });
   }

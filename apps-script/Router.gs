@@ -51,16 +51,21 @@ function routeRequest_(method, e) {
     if (method === "GET") {
       switch (route) {
         case "health":
-          const configRepo = new SheetRepository("00_CONFIG");
+          // Honest health: in Apps Script the sheet IS the live store, so a reachable
+          // handler implies script + spreadsheet are working. No fabricated error rate.
+          const cfgRepo = new SheetRepository("00_CONFIG");
+          const cfgCount = cfgRepo.count();
           return jsonResponse_({
             ok: true,
             requestId: requestId,
             appsScript: "healthy",
             spreadsheet: "healthy",
             schemaVersion: "10.0.0",
-            lastWrite: new Date().toISOString(),
+            lastWrite: cfgCount > 0 ? new Date().toISOString() : "",
             lastRead: new Date().toISOString(),
-            errorRate: 0.001,
+            errorRate: 0,
+            dataLayer: "GOOGLE_SHEETS",
+            demoMode: false,
             meta: { version: "10.0.0", gateway: "APPS_SCRIPT" }
           });
 
@@ -87,7 +92,10 @@ function routeRequest_(method, e) {
           });
 
         case "student/profile":
-          const stuId = (e.parameter && e.parameter.studentId) || context.userId;
+          // IDOR fix: STUDENT may only read their own profile.
+          const stuId = context.role === "STUDENT"
+            ? context.userId
+            : ((e.parameter && e.parameter.studentId) || context.userId);
           const profiles = new SheetRepository("03_STUDENT_PROFILES").findBy("studentId", stuId);
           return jsonResponse_({
             ok: true,
@@ -97,7 +105,10 @@ function routeRequest_(method, e) {
 
         case "student/goals":
         case "goal/list":
-          const targetStu = (e.parameter && e.parameter.studentId) || context.userId;
+          // IDOR fix: STUDENT may only read their own goals.
+          const targetStu = context.role === "STUDENT"
+            ? context.userId
+            : ((e.parameter && e.parameter.studentId) || context.userId);
           const goals = new SheetRepository("04_GOALS").findBy("studentId", targetStu);
           return jsonResponse_({
             ok: true,
@@ -178,9 +189,13 @@ function routeRequest_(method, e) {
 
         case "student/profile":
           validatePayload_("student/profile", body);
+          // IDOR fix: STUDENT may only write their own profile.
+          const profileStuId = context.role === "STUDENT"
+            ? context.userId
+            : (body.studentId || context.userId);
           const studentProfile = {
-            recordId: "REC_" + (body.studentId || context.userId),
-            studentId: body.studentId || context.userId,
+            recordId: "REC_" + profileStuId,
+            studentId: profileStuId,
             fullName: body.name || body.fullName || (body.fields && body.fields["student.fullName"]) || "Học viên",
             gradeLevel: body.gradeLevel || "Lớp 8",
             cohort: body.cohort || "Nhóm Thực Nghiệm",
@@ -188,10 +203,11 @@ function routeRequest_(method, e) {
             badge: body.badge || "Nhà Chiến Lược",
             updatedAt: new Date().toISOString()
           };
-          new SheetRepository("03_STUDENT_PROFILES").append(studentProfile);
-          new SheetRepository("01_USERS").append({
+          // Upsert (not duplicate-append): one profile row per student.
+          new SheetRepository("03_STUDENT_PROFILES").upsert("studentId", profileStuId, studentProfile);
+          new SheetRepository("01_USERS").upsert("studentId", profileStuId, {
             recordId: studentProfile.recordId,
-            studentId: studentProfile.studentId,
+            studentId: profileStuId,
             role: "STUDENT",
             status: "active",
             updatedAt: new Date().toISOString()
@@ -240,9 +256,10 @@ function routeRequest_(method, e) {
           }
           const sysConfigRepo = new SheetRepository("36_SYSTEM_CONFIG");
           const configUpdates = body.config || body;
-          sysConfigRepo.append({
-            recordId: "CFG_" + Utilities.getUuid(),
-            configKey: configUpdates.key || "SYSTEM_RUNTIME_CONFIG",
+          const cfgKey = configUpdates.key || "SYSTEM_RUNTIME_CONFIG";
+          sysConfigRepo.upsert("configKey", cfgKey, {
+            recordId: "CFG_" + cfgKey,
+            configKey: cfgKey,
             configValue: JSON.stringify(configUpdates),
             updatedAt: new Date().toISOString(),
             updatedBy: context.userId

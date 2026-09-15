@@ -155,7 +155,7 @@ export const FutureCalmHome: React.FC<FutureCalmHomeProps> = ({ onPlayGame, onNa
             <button
               onClick={() => {
                 const game = games[0];
-                if (game) onPlayGame(game.id);
+                if (game) onPlayGame(game.gameId);
               }}
               className="px-4 py-3 bg-white/15 hover:bg-white/25 text-white border border-white/20 rounded-2xl font-bold text-xs sm:text-sm transition flex items-center gap-2 cursor-pointer"
             >

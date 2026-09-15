@@ -52,6 +52,13 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit }) => {
   // Canvas ref for animated 2D character avatar & environment
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
+  // Real telemetry refs (honest timings/counters, no fabricated metrics)
+  const startedAtRef = useRef<number>(Date.now());
+  const pauseCountRef = useRef(0);
+  const helpCountRef = useRef(0);
+  const taskSwitchRef = useRef(0);
+  const lastSceneRef = useRef<string | null>(null);
+
   // Initialize game start
   useEffect(() => {
     if (game.scenes.length > 0) {
@@ -67,6 +74,10 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit }) => {
   // Log scene view & reset timer
   useEffect(() => {
     if (currentSceneId) {
+      if (lastSceneRef.current !== null && lastSceneRef.current !== currentSceneId) {
+        taskSwitchRef.current += 1;
+      }
+      lastSceneRef.current = currentSceneId;
       logBehaviorEvent('scene_viewed', currentSceneId, {
         sceneType: currentScene?.type
       });
@@ -102,28 +113,46 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit }) => {
   useEffect(() => {
     if (currentScene?.type === 'ending' && !v9ResultSaved) {
       setV9ResultSaved(true);
+
+      // Real metrics computed from actual session state.
+      const endedAt = Date.now();
+      const durationMs = Math.max(1000, endedAt - startedAtRef.current);
+      const totalChoices = game.scenes.reduce(
+        (acc, s) => acc + (s.choices?.length || 0), 0
+      );
+      const completionRate = totalChoices > 0
+        ? Math.min(1, history.length / totalChoices)
+        : 0;
+      const decisionTimeMeanMs = Math.max(1, Math.round(durationMs / Math.max(1, history.length)));
+      const score = Math.min(100, Math.max(0, Math.round(completionRate * 100)));
+      const liveConstructs = (studentModel?.constructs as any) || {
+        Planning: 50,
+        SelfRegulation: 50,
+        HelpSeeking: 50
+      };
+
       V9Client.submitGameResult({
         gameId: game.gameId,
         studentId: studentModel?.userId || 'STU_001',
         attemptNo: retryCount + 1,
-        startedAt: new Date(Date.now() - 180000).toISOString(),
-        endedAt: new Date().toISOString(),
-        durationMs: 180000,
+        startedAt: new Date(startedAtRef.current).toISOString(),
+        endedAt: new Date(endedAt).toISOString(),
+        durationMs,
         completionStatus: 'completed',
-        score: 90,
+        score,
         behaviorMetrics: {
-          decisionTimeMeanMs: 3200,
+          decisionTimeMeanMs,
           choiceChanges: history.length,
-          pauseCount: 0,
-          helpCount: 1,
+          pauseCount: pauseCountRef.current,
+          helpCount: helpCountRef.current,
           retryCount,
-          taskSwitchCount: 1,
-          completionRate: 1
+          taskSwitchCount: taskSwitchRef.current,
+          completionRate
         },
         constructSignals: {
-          Planning: 75,
-          SelfRegulation: 80,
-          HelpSeeking: 70
+          Planning: Number(liveConstructs.Planning) || 50,
+          SelfRegulation: Number(liveConstructs.SelfRegulation) || 50,
+          HelpSeeking: Number(liveConstructs.HelpSeeking) || 50
         }
       }).then((res) => {
         if (res.readBackVerified || res.ok) {
@@ -131,7 +160,7 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit }) => {
         }
       }).catch(() => {});
     }
-  }, [currentScene?.type, v9ResultSaved, game.gameId, studentModel?.userId, retryCount, history.length]);
+  }, [currentScene?.type, v9ResultSaved, game.gameId, game.scenes, studentModel?.userId, studentModel?.constructs, retryCount, history.length]);
 
   // Procedural Canvas Avatar Animation
   useEffect(() => {
@@ -410,7 +439,9 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit }) => {
             </button>
             <button
               onClick={() => {
-                setIsPaused(!isPaused);
+                const willPause = !isPaused;
+                if (willPause) pauseCountRef.current += 1;
+                setIsPaused(willPause);
                 logBehaviorEvent(isPaused ? 'resumed' : 'pause', currentSceneId);
               }}
               title={isPaused ? 'Tiếp tục' : 'Tạm dừng'}
@@ -530,11 +561,13 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit }) => {
                         <button
                           type="button"
                           onClick={() => {
+                            const willOpen = showToolkitHint !== choice.id;
+                            if (willOpen) helpCountRef.current += 1;
                             logBehaviorEvent('hint_requested', currentScene.id, {
                               choiceId: choice.id
                             });
                             setShowToolkitHint(
-                              showToolkitHint === choice.id ? null : choice.id
+                              willOpen ? choice.id : null
                             );
                           }}
                           className="text-[11px] text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
