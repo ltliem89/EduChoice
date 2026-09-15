@@ -1,6 +1,6 @@
 # Evidence Ledger — EduChoice-AI
 
-Ngày đo: 2026-09-15 · Phương pháp: chạy trực tiếp trên working copy (engine, health, audit scan). Cite file:line cho mọi mục.
+Ngày đo: 2026-09-15 · Phương pháp: chạy trực tiếp working copy (engine, health, audit scan). Cite file:line cho mọi mục.
 
 ## Bằng chứng
 | ID | Claim(s) hỗ trợ | Loại | Trạng thái | Mô tả | Nguồn |

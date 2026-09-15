@@ -5,7 +5,7 @@ Ngày sinh: 2026 · version v3.0.0
 ## Danh sách & trạng thái
 | Số | Tệp | Nội dung | Trạng thái |
 | --- | --- | --- | --- |
-| 01 | 01_EduChoice-AI_Presentation.pptx | Deck chính + backup (33 slides) | Đã tạo |
+| 01 | 01_EduChoice-AI_Presentation.pptx | Deck chính (15 slides, Times New Roman ≥16pt) | Đã tạo |
 | 02 | 02_Presentation.pdf | Bản in | PENDING — cần LibreOffice (máy build không có) |
 | 03 | 03_Speaker_Notes.md | Ghi chú thuyết trình | Đã tạo |
 | 04 | 04_Speaker_Notes.pdf | Bản in ghi chú | PENDING — cần LibreOffice |
@@ -23,4 +23,4 @@ Ngày sinh: 2026 · version v3.0.0
 | 16 | 16_Deliverable_Manifest.md | Chính file này | Đã tạo |
 
 ## Source of truth
-Mọi số liệu lấy từ presentation/content.mjs → dùng cho cả PPTX lẫn tài liệu. Thay đổi dữ liệu = sửa content.mjs rồi chạy lại: node presentation/build-pptx.mjs && node presentation/generate-docs.mjs.
+Mọi số liệu lấy từ presentation/content.mjs → dùng cho cả PPTX lẫn tài liệu. Sửa dữ liệu ở content.mjs rồi chạy: node presentation/build-pptx.mjs && node presentation/generate-docs.mjs.

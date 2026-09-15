@@ -1,6 +1,6 @@
 # Data Dictionary — EduChoice-AI
 
-Các thuật ngữ chuẩn dùng trong deck. Theo đặc tả: trình bày và vấn đáp phải dùng cùng từ vựng.
+Các thuật ngữ chuẩn dùng trong deck. Theo đặc tả: trình bày và vấn đáp dùng cùng từ vựng.
 | Thuật ngữ | Định nghĩa |
 | --- | --- |
 | Behavior Event | Sự kiện vi mô trong game (chọn, đổi lựa chọn, dừng, trợ giúp, chuyển scene) được đo thật |
