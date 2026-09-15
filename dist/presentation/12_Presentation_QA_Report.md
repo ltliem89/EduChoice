@@ -25,8 +25,9 @@ Tệp xem xét: 01_EduChoice-AI_Presentation.pptx (15 slide).
 - Có minh họa giao diện sản phẩm (S8 theo GameRuntime/StudentApp) và bảng minh chứng (S10, S11).
 
 ## 6. Giới hạn xuất bản
-- PDF (02) chưa tự sinh: máy build không có LibreOffice (NO_LIBREOFFICE). File 02_Presentation.pdf.pending.md hướng dẫn sinh thủ công.
-- Visual QA pixel-to-pixel chưa tự động do NO_LIBREOFFICE; đã kiểm tra số liệu & cấu trúc bằng script.
+- PDF (02) đã sinh bằng PowerPoint COM; nếu cần tái sinh dùng soffice --convert-to pdf (xem 02_Presentation.pdf.md).
+- 04_Speaker_Notes.pdf và 20_BaoCao pdf cần Word/LibreOffice (máy build chưa xuất được).
+- Visual QA pixel-to-pixel chưa tự động; đã kiểm tra số liệu, font (TNR ≥16pt) và cấu trúc bằng script XML.
 
 ## Kết luận
 Không có critical issue chặn xuất bản deck.

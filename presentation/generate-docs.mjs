@@ -213,8 +213,9 @@ const presQa = H1('Presentation QA Report — EduChoice-AI')
   + LI('Màu đa dạng sinh động theo bộ palette đồng nhất; icon minh họa theo từng đơn vị kiến thức.')
   + LI('Có minh họa giao diện sản phẩm (S8 theo GameRuntime/StudentApp) và bảng minh chứng (S10, S11).')
   + H2('6. Giới hạn xuất bản')
-  + LI('PDF (02) chưa tự sinh: máy build không có LibreOffice (NO_LIBREOFFICE). File 02_Presentation.pdf.pending.md hướng dẫn sinh thủ công.')
-  + LI('Visual QA pixel-to-pixel chưa tự động do NO_LIBREOFFICE; đã kiểm tra số liệu & cấu trúc bằng script.')
+  + LI('PDF (02) đã sinh bằng PowerPoint COM; nếu cần tái sinh dùng soffice --convert-to pdf (xem 02_Presentation.pdf.md).')
+  + LI('04_Speaker_Notes.pdf và 20_BaoCao pdf cần Word/LibreOffice (máy build chưa xuất được).')
+  + LI('Visual QA pixel-to-pixel chưa tự động; đã kiểm tra số liệu, font (TNR ≥16pt) và cấu trúc bằng script XML.')
   + H2('Kết luận')
   + P('Không có critical issue chặn xuất bản deck.');
 write('12_Presentation_QA_Report.md', presQa);
@@ -270,14 +271,14 @@ const method = H1('Research Method Summary — EduChoice-AI')
 write('15_Research_Method_Summary.md', method);
 
 // ============================================================
-// 02_Presentation.pdf.pending (giới hạn LibreOffice)
+// 02_Presentation.pdf (đã sinh bằng PowerPoint COM trên desktop)
 // ============================================================
-const pdfPending = H1('02_EduChoice-AI_Presentation.pdf — PENDING (limitation)')
-  + P('\nMáy build không cài LibreOffice (NO_LIBREOFFICE) nên bước render PPTX→PDF không tự động chạy.')
-  + P('Cách sinh trên máy có LibreOffice:')
+const pdfNotes = H1('02_EduChoice-AI_Presentation.pdf — notes')
+  + P('\nPDF đã được sinh bằng PowerPoint (COM) trên máy build: Presentations.Open → SaveAs(..., ppSaveAsPDF).')
+  + P('Nếu máy khác không có PowerPoint, có thể dùng:')
   + P('    soffice --headless --convert-to pdf --outdir dist/presentation dist/presentation/01_EduChoice-AI_Presentation.pptx')
-  + P('\nĐây là giới hạn công cụ, KHÔNG phải dữ liệu thiếu. PDF giữ nguyên nội dung PPTX (cùng source of truth content.mjs).');
-write('02_Presentation.pdf.pending.md', pdfPending);
+  + P('\nPDF giữ nguyên nội dung PPTX (cùng source of truth content.mjs).');
+write('02_Presentation.pdf.md', pdfNotes);
 
 // ============================================================
 // 16_Deliverable_Manifest.md
@@ -287,9 +288,9 @@ const manifest = H1('Deliverable Manifest — EduChoice-AI')
   + H2('Danh sách & trạng thái')
   + TABLE(['Số', 'Tệp', 'Nội dung', 'Trạng thái'], [
     ['01', '01_EduChoice-AI_Presentation.pptx', 'Deck chính (' + TOTAL_SLIDES + ' slides, Times New Roman ≥16pt)', 'Đã tạo'],
-    ['02', '02_Presentation.pdf', 'Bản in', 'PENDING — cần LibreOffice (máy build không có)'],
+    ['02', '02_Presentation.pdf', 'Bản in (15 slides, PDF thật)', 'Đã tạo — PowerPoint COM'],
     ['03', '03_Speaker_Notes.md', 'Ghi chú thuyết trình', 'Đã tạo'],
-    ['04', '04_Speaker_Notes.pdf', 'Bản in ghi chú', 'PENDING — cần LibreOffice'],
+    ['04', '04_Speaker_Notes.pdf', 'Bản in ghi chú', 'PENDING — cần Word/LibreOffice'],
     ['05', '05_Judge_QA.md', 'Ngân hàng câu hỏi giám khảo', 'Đã tạo'],
     ['06', '06_Evidence_Ledger.md', 'Sổ bằng chứng', 'Đã tạo'],
     ['07', '07_Formula_Registry.md', 'Đăng ký công thức', 'Đã tạo'],
@@ -301,10 +302,13 @@ const manifest = H1('Deliverable Manifest — EduChoice-AI')
     ['13', '13_AI_Usage_Log.md', 'Nhật ký dùng AI', 'Đã tạo'],
     ['14', '14_Data_Dictionary.md', 'Từ điển dữ liệu & thuật ngữ', 'Đã tạo'],
     ['15', '15_Research_Method_Summary.md', 'Tóm tắt phương pháp nghiên cứu', 'Đã tạo'],
-    ['16', '16_Deliverable_Manifest.md', 'Chính file này', 'Đã tạo']
+    ['16', '16_Deliverable_Manifest.md', 'Chính file này', 'Đã tạo'],
+    ['20', '20_BaoCao_ThucHien_DuAn.docx', 'Báo cáo kết quả thực hiện dự án (A4, TNR 14, lề 3/2/2/2, 7 trang)', 'Đã tạo — node presentation/generate-baocao.mjs'],
+    ['20', '20_BaoCao_ThucHien_DuAn.pdf', 'Bản in báo cáo', 'PENDING — cần Word COM hoặc LibreOffice'],
+    ['20', '20_BaoCao_ThucHien_DuAn.md', 'Bản markdown báo cáo', 'Đã tạo']
   ])
   + H2('Source of truth')
-  + P('Mọi số liệu lấy từ presentation/content.mjs → dùng cho cả PPTX lẫn tài liệu. Sửa dữ liệu ở content.mjs rồi chạy: node presentation/build-pptx.mjs && node presentation/generate-docs.mjs.');
+  + P('Mọi số liệu lấy từ presentation/content.mjs → dùng cho cả PPTX, tài liệu và báo cáo. Sửa dữ liệu ở content.mjs rồi chạy: node presentation/build-pptx.mjs && node presentation/generate-docs.mjs && node presentation/generate-baocao.mjs.');
 
 write('16_Deliverable_Manifest.md', manifest);
 

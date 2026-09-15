@@ -253,12 +253,12 @@ function footer(slide, note) {
   drawRow(r2, 3.42, -1);
   arrowD(s, PAD + 3 * (bw + gap) + bw - 0.12, 3.04, 0.22, 0.36, C.violet);
   tx(s, 'Luồng 1 → 8 (zigzag): quan sát hành vi → nhận diện tình huống → đề xuất → kiểm soát → can thiệp → đo phản ứng & transfer', PAD + 0.1, 4.75, 12.3, 0.45, 16, { color: C.soft, italic: true });
-  const notes = [['⏱', 'Đo thật', 'Telemetry trong game thay vì hằng số', C.blue], ['⚙', 'AI an toàn', 'Allow-list + fallback deterministic', C.violet], ['↗', 'Transfer đo được', 'Kỹ năng game → micro-hành động thật', C.green]];
+  const notes = [['⏱', 'Đo thật', 'Telemetry trong game thay vì hằng số', C.blue], ['⚙', 'AI an toàn', 'Allow-list + fallback deterministic', C.violet], ['↗', 'Transfer', 'Kỹ năng game → micro-hành động thật', C.green]];
   notes.forEach((n, i) => {
     const x = PAD + i * 4.16, w = 3.95, y = 5.35, h = 1.1;
     card(s, x, y, w, h, C.white, n[3]);
-    chip(s, n[0], n[1], x + 0.15, y + 0.3, 1.7, 0.5, n[3], { size: 16 });
-    tx(s, n[2], x + 1.9, y + 0.12, w - 2.05, 0.9, 16, { color: C.ink, lsm: 1.05, valign: 'middle', wrap: true });
+    chip(s, n[0], n[1], x + 0.15, y + 0.3, 1.9, 0.5, n[3], { size: 16 });
+    tx(s, n[2], x + 2.1, y + 0.12, w - 2.25, 0.9, 16, { color: C.ink, lsm: 1.05, valign: 'middle', wrap: true });
   });
   footer(s);
 }
@@ -282,12 +282,12 @@ function footer(slide, note) {
   layers.forEach((l, i) => {
     const y = ly + i * (lh + lgap);
     card(s, PAD, y, 12.43, lh, 'FFFFFF', l[3]);
-    chip(s, l[0], l[1], PAD + 0.18, y + 0.14, 2.9, 0.58, l[3], { size: 18 });
-    tx(s, l[2], PAD + 3.3, y, 8.9, lh, 16, { color: C.ink, valign: 'middle', lsm: 1.05 });
+    chip(s, l[0], l[1], PAD + 0.18, y + 0.14, 3.3, 0.58, l[3], { size: 17 });
+    tx(s, l[2], PAD + 3.75, y, 8.35, lh, 16, { color: C.ink, valign: 'middle', lsm: 1.05 });
     if (i < 3) arrowD(s, PAD + 1.5, y + lh - 0.04, 0.2, lgap + 0.04, l[3]);
   });
   card(s, PAD, 6.24, 12.43, 0.66, C.blush, C.red);
-  chip(s, '▲', 'Teacher oversight + Audit log (31) + AI decision log (18) — con người quyết định cuối cùng', PAD + 0.25, 6.32, 11.6, 0.5, C.red, { size: 16, fg: C.white, glyphSize: 22 });
+  chip(s, '▲', 'Oversight — giáo viên quyết định cuối cùng · Audit log (31) · AI log (18)', PAD + 0.25, 6.27, 11.6, 0.56, C.red, { size: 16, fg: C.white, glyphSize: 22 });
   footer(s);
 }
 
@@ -303,7 +303,7 @@ function footer(slide, note) {
   const steps = [
     ['⧉', 'Context + Candidate set', C.blue],
     ['◉', 'Gemini reasoning', C.violet],
-    ['✓', 'Kiểm soát: schema · allow-list · range', C.orange],
+    ['✓', 'Kiểm soát: schema · allow-list', C.orange],
     ['⚙', 'Fallback an toàn', C.teal],
     ['➤', 'Final action + Log', C.green]
   ];
@@ -352,8 +352,8 @@ function footer(slide, note) {
   // right column
   const rx = 4.15, rw = 8.73;
   card(s, rx, py, rw, 2.0, C.lavender, C.violet);
-  chip(s, '➤', 'ĐỀ XUẤT THÍCH ỨNG (AI + Rule)', rx + 0.22, py + 0.22, 3.7, 0.56, C.violet, { size: 20 });
-  chip(s, '★', 'Tình huống: Trì hoãn khởi đầu', rx + 4.1, py + 0.22, 3.7, 0.56, C.orange, { size: 16, bold: true, color: C.ink, fg: C.white });
+  chip(s, '➤', 'ĐỀ XUẤT THÍCH ỨNG (AI)', rx + 0.22, py + 0.22, 3.7, 0.56, C.violet, { size: 16 });
+  chip(s, '★', 'Tình huống: Trì hoãn', rx + 4.1, py + 0.22, 3.7, 0.56, C.orange, { size: 16, bold: true, color: C.ink, fg: C.white });
   tx(s, 'Vì sao: 2 lần trì hoãn + 1 chuyển tab trong 10 phút đầu. Đề xuất: kế hoạch 25 phút + nhắc giữa giờ.', rx + 0.3, py + 0.92, rw - 0.6, 0.62, 16, { color: C.ink, lsm: 1.08, valign: 'top' });
   tx(s, 'Mức tự tin: 0.87', rx + 0.3, py + 1.56, 1.9, 0.36, 16, { color: C.violetDark, bold: true, valign: 'middle' });
   s.addShape('roundRect', { x: rx + 1.9, y: py + 1.62, w: 4.3, h: 0.24, rectRadius: 0.05, fill: { color: C.bg }, line: { color: C.line } });
