@@ -27,7 +27,8 @@ import {
   Plus,
   Trash2,
   Database,
-  Layers
+  Layers,
+  Bot
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { GameSpecification, ConstructName } from '../../types';
@@ -37,6 +38,7 @@ import { InterventionModal } from './InterventionModals';
 import { StudentJourney } from './StudentJourney';
 import { MultiTaskMissionView } from './MultiTaskMissionView';
 import { FutureCalmHome } from './FutureCalmHome';
+import { FutureAssistant } from './FutureAssistant';
 import { StudentAccountModal } from './StudentAccountModal';
 import { V10Client } from '../../api/v10Client';
 
@@ -55,7 +57,7 @@ export const StudentPortal: React.FC = () => {
   } = useApp();
 
   const [activePlayingGame, setActivePlayingGame] = useState<GameSpecification | null>(null);
-  const [activeTab, setActiveTab] = useState<'challenges' | 'future_home' | 'journey' | 'missions' | 'toolkits' | 'profile'>('challenges');
+  const [activeTab, setActiveTab] = useState<'challenges' | 'future_home' | 'journey' | 'insights' | 'missions' | 'toolkits' | 'profile'>('challenges');
   const [selectedConstructFilter, setSelectedConstructFilter] = useState<string>('all');
   const [selectedPracticeToolkit, setSelectedPracticeToolkit] = useState<string | null>(null);
 
@@ -373,6 +375,21 @@ export const StudentPortal: React.FC = () => {
             <button
               onClick={() => {
                 SoundEngine.playClick();
+                setActiveTab('insights');
+              }}
+              className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+                activeTab === 'insights'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+              }`}
+            >
+              <Bot className="w-4 h-4 text-fuchsia-400" />
+              <span>Trợ Lý Tương Lai 2050</span>
+            </button>
+
+            <button
+              onClick={() => {
+                SoundEngine.playClick();
                 setActiveTab('missions');
               }}
               className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition flex items-center gap-2 cursor-pointer whitespace-nowrap ${
@@ -429,6 +446,11 @@ export const StudentPortal: React.FC = () => {
 
           {/* TAB: STUDENT JOURNEY (Master Spec Section 54) */}
           {activeTab === 'journey' && <StudentJourney />}
+
+          {/* TAB: FUTURE ASSISTANT ASTRA-2050 (Học & Sống) */}
+          {activeTab === 'insights' && (
+            <FutureAssistant onNavigate={(tab) => setActiveTab(tab as any)} />
+          )}
 
           {/* TAB: V6 MULTI-TASK & MISSION PLANNER (Master Spec V6.3, V6.5, V6.9) */}
           {activeTab === 'missions' && (

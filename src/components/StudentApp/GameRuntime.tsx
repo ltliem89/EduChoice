@@ -26,7 +26,7 @@ interface GameRuntimeProps {
 }
 
 export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit }) => {
-  const { logBehaviorEvent, updateStudentConstruct, addCustomMicroAction, studentModel } = useApp();
+  const { logBehaviorEvent, updateStudentConstruct, addCustomMicroAction, registerSessionCompletion, studentModel } = useApp();
   const [acceptedMicroAction, setAcceptedMicroAction] = useState(false);
   const [v9ResultSaved, setV9ResultSaved] = useState(false);
   const [v9Verified, setV9Verified] = useState(false);
@@ -159,8 +159,15 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit }) => {
           setV9Verified(true);
         }
       }).catch(() => {});
+
+      registerSessionCompletion({
+        retryCount,
+        strategyChangeCount: taskSwitchRef.current,
+        helpRequestCount: helpCountRef.current,
+        reflectionsCompleted: reflectionText.trim() ? 1 : 0
+      });
     }
-  }, [currentScene?.type, v9ResultSaved, game.gameId, game.scenes, studentModel?.userId, studentModel?.constructs, retryCount, history.length]);
+  }, [currentScene?.type, v9ResultSaved, game.gameId, game.scenes, studentModel?.userId, studentModel?.constructs, retryCount, history.length, registerSessionCompletion, reflectionText]);
 
   // Procedural Canvas Avatar Animation
   useEffect(() => {

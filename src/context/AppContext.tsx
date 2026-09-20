@@ -21,6 +21,8 @@ import { DEFAULT_SCRIPTS } from '../data/defaultScripts';
 import { APPROVED_TOOLKITS } from '../data/approvedToolkits';
 import { V9Client } from '../api/v9Client';
 
+const clampTrend = (v: number) => Math.max(-1, Math.min(1, v));
+
 interface AppContextType {
   mode: 'student' | 'admin' | 'teacher';
   setMode: (mode: 'student' | 'admin' | 'teacher') => void;
@@ -49,6 +51,7 @@ interface AppContextType {
   behaviorEvents: BehaviorEvent[];
   logBehaviorEvent: (type: BehaviorEvent['type'], sceneId: string, payload?: Record<string, any>) => void;
   updateStudentConstruct: (construct: ConstructName, delta: number) => void;
+  registerSessionCompletion: (sessionMetrics?: { retryCount?: number; strategyChangeCount?: number; helpRequestCount?: number; reflectionsCompleted?: number }) => void;
 
   // Goals System (Section 8)
   goals: GoalItem[];
@@ -688,16 +691,69 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateStudentConstruct = (construct: ConstructName, delta: number) => {
+    const now = new Date().toISOString();
+    const day = now.slice(0, 10);
     setStudentModel((prev) => {
       const currentScore = prev.constructs[construct] || 50;
       const newScore = Math.min(Math.max(currentScore + delta, 0), 100);
+      const details = prev.constructDetails?.[construct];
+      const evidenceCount = (details?.evidenceCount ?? 0) + 1;
+      const confidence = Math.min(0.95, (details?.confidence ?? 0.5) + 0.02);
+      const prevTrend = details?.trend ?? 0;
+      const trend = clampTrend(prevTrend * 0.7 + (delta / 100) * 0.5);
+      const history = Array.isArray(prev.growthHistory) ? prev.growthHistory : [];
+      const withoutToday = history.filter((h) => !(h.date === day && h.construct === construct));
+      const growthHistory = [...withoutToday, { date: day, construct, score: newScore }]
+        .sort((a, b) => a.date.localeCompare(b.date) || a.construct.localeCompare(b.construct))
+        .slice(-240);
       return {
         ...prev,
         constructs: {
           ...prev.constructs,
           [construct]: newScore
         },
-        lastActive: new Date().toISOString()
+        constructDetails: {
+          ...prev.constructDetails,
+          [construct]: {
+            construct,
+            estimate: newScore,
+            confidence,
+            evidenceCount,
+            trend,
+            lastUpdated: now
+          }
+        },
+        growthHistory,
+        lastActive: now
+      };
+    });
+  };
+
+  const registerSessionCompletion = (sessionMetrics?: {
+    retryCount?: number;
+    strategyChangeCount?: number;
+    helpRequestCount?: number;
+    reflectionsCompleted?: number;
+  }) => {
+    setStudentModel((prev) => {
+      const base = prev.statsSummary || {
+        retryCount: 0,
+        strategyChangeCount: 0,
+        helpRequestCount: 0,
+        microActionsCompleted: 0,
+        reflectionsCompleted: 0
+      };
+      return {
+        ...prev,
+        sessionsCompleted: (prev.sessionsCompleted || 0) + 1,
+        lastActive: new Date().toISOString(),
+        statsSummary: {
+          ...base,
+          retryCount: base.retryCount + (sessionMetrics?.retryCount ?? 0),
+          strategyChangeCount: base.strategyChangeCount + (sessionMetrics?.strategyChangeCount ?? 0),
+          helpRequestCount: base.helpRequestCount + (sessionMetrics?.helpRequestCount ?? 0),
+          reflectionsCompleted: base.reflectionsCompleted + (sessionMetrics?.reflectionsCompleted ?? 0)
+        }
       };
     });
   };
@@ -1111,6 +1167,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         behaviorEvents,
         logBehaviorEvent,
         updateStudentConstruct,
+        registerSessionCompletion,
         goals,
         addGoal,
         updateGoalProgress,
