@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Clock,
   Volume2,
@@ -12,13 +12,16 @@ import {
   Award,
   ChevronRight,
   Pause,
-  Play
+  Play,
+  Brain
 } from 'lucide-react';
-import { GameSpecification, Scene, Choice } from '../../types';
+import { GameSpecification, Scene, Choice, ConstructName } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { SoundEngine } from '../../utils/soundEffects';
 import { InterventionModal } from './InterventionModals';
 import { V9Client } from '../../api/v9Client';
+import { adviceForAfterTask, timeOfDayLabel, dayTypeLabel, toneStyle, toneBadge } from '../../utils/adviceEngine';
+import { AdviceOutcome } from '../../data/adviceCatalog';
 
 interface GameRuntimeProps {
   game: GameSpecification;
@@ -41,6 +44,8 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit }) => {
   const [isSoundMuted, setIsSoundMuted] = useState(SoundEngine.isMuted());
   const [isPaused, setIsPaused] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  // Applied construct deltas during this run (real, not displayed constants)
+  const [appliedDeltas, setAppliedDeltas] = useState<Record<string, number>>({});
 
   // Timer per scene or overall session
   const [timeLeft, setTimeLeft] = useState<number>(45);
@@ -58,6 +63,39 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit }) => {
   const helpCountRef = useRef(0);
   const taskSwitchRef = useRef(0);
   const lastSceneRef = useRef<string | null>(null);
+  const choicesMadeRef = useRef(0);
+  const completedRef = useRef(false);
+  const abandonedRef = useRef(false);
+
+  // Advice engine: advice selection for the ending screen, rotating across retries
+  const adviceSeenRef = useRef<string[]>([]);
+  const endingAdvice = useMemo(() => {
+    if (currentScene?.type !== 'ending') return null;
+    const totalChoices = game.scenes.reduce(
+      (acc, s) => acc + (s.choices?.length || 0), 0
+    );
+    const completionRate = totalChoices > 0
+      ? Math.min(1, choicesMadeRef.current / totalChoices)
+      : 0;
+    const outcome: AdviceOutcome = abandonedRef.current
+      ? 'abandoned'
+      : completionRate >= 0.6 && retryCount === 0
+        ? 'success'
+        : completionRate >= 0.3
+          ? 'partial'
+          : 'struggled';
+    const primaryConstruct = game.constructs[0] as ConstructName | undefined;
+    const pick = adviceForAfterTask({
+      construct: primaryConstruct,
+      outcome,
+      now: new Date(),
+      seenIds: adviceSeenRef.current
+    });
+    if (!adviceSeenRef.current.includes(pick.entry.id)) {
+      adviceSeenRef.current = [...adviceSeenRef.current, pick.entry.id];
+    }
+    return { pick, completionRate };
+  }, [currentScene?.type, currentSceneId, retryCount, game.scenes, game.constructs]);
 
   // Initialize game start
   useEffect(() => {
@@ -113,6 +151,7 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit }) => {
   useEffect(() => {
     if (currentScene?.type === 'ending' && !v9ResultSaved) {
       setV9ResultSaved(true);
+      completedRef.current = true;
 
       // Real metrics computed from actual session state.
       const endedAt = Date.now();
@@ -120,10 +159,12 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit }) => {
       const totalChoices = game.scenes.reduce(
         (acc, s) => acc + (s.choices?.length || 0), 0
       );
+      // NOTE: completionRate dựa trên SỐ LỰA CHỌN THẬT, không phải số scene đã xem (audit rel-01)
+      const choicesMade = choicesMadeRef.current;
       const completionRate = totalChoices > 0
-        ? Math.min(1, history.length / totalChoices)
+        ? Math.min(1, choicesMade / totalChoices)
         : 0;
-      const decisionTimeMeanMs = Math.max(1, Math.round(durationMs / Math.max(1, history.length)));
+      const decisionTimeMeanMs = Math.max(1, Math.round(durationMs / Math.max(1, choicesMade)));
       const score = Math.min(100, Math.max(0, Math.round(completionRate * 100)));
       const liveConstructs = (studentModel?.constructs as any) || {
         Planning: 50,
@@ -138,11 +179,11 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit }) => {
         startedAt: new Date(startedAtRef.current).toISOString(),
         endedAt: new Date(endedAt).toISOString(),
         durationMs,
-        completionStatus: 'completed',
+        completionStatus: completedRef.current ? 'completed' : 'abandoned',
         score,
         behaviorMetrics: {
           decisionTimeMeanMs,
-          choiceChanges: history.length,
+          choiceChanges: choicesMade,
           pauseCount: pauseCountRef.current,
           helpCount: helpCountRef.current,
           retryCount,
@@ -294,6 +335,7 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit }) => {
   const handleSelectChoice = (choice: Choice) => {
     SoundEngine.playSelect();
     setSelectedChoiceId(choice.id);
+    choicesMadeRef.current += 1;
 
     logBehaviorEvent('choice_made', currentScene?.id || '', {
       choiceId: choice.id,
@@ -307,6 +349,14 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit }) => {
         choice.constructImpact.construct as any,
         choice.constructImpact.delta
       );
+      // Ghi nhận delta THỰC để màn ending hiển thị đúng (audit rel-01)
+      setAppliedDeltas((prev) => {
+        const prevVal = prev[choice.constructImpact!.construct] || 0;
+        return {
+          ...prev,
+          [choice.constructImpact!.construct]: prevVal + choice.constructImpact!.delta
+        };
+      });
     }
 
     // Smooth transition to consequence after short pause
@@ -357,6 +407,10 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit }) => {
     });
 
     updateStudentConstruct('Reflection', 15);
+    setAppliedDeltas((prev) => ({
+      ...prev,
+      Reflection: (prev['Reflection'] || 0) + 15
+    }));
 
     // Proceed to ending or next scene
     const endingScene = game.scenes.find((s) => s.type === 'ending');
@@ -458,7 +512,37 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit }) => {
             </button>
             {onExit && (
               <button
-                onClick={onExit}
+                onClick={() => {
+                  // Audit rel-03: ghi event 'abandoned' khi thoát giữa chừng
+                  if (!completedRef.current) {
+                    abandonedRef.current = true;
+                    logBehaviorEvent('abandoned', currentSceneId, {
+                      gameId: game.gameId,
+                      title: game.title,
+                      sceneType: currentScene?.type
+                    });
+                    V9Client.submitGameResult({
+                      gameId: game.gameId,
+                      studentId: studentModel?.userId || 'STU_001',
+                      attemptNo: retryCount + 1,
+                      startedAt: new Date(startedAtRef.current).toISOString(),
+                      endedAt: new Date().toISOString(),
+                      durationMs: Math.max(1000, Date.now() - startedAtRef.current),
+                      completionStatus: 'abandoned',
+                      score: 0,
+                      behaviorMetrics: {
+                        decisionTimeMeanMs: 0,
+                        choiceChanges: choicesMadeRef.current,
+                        pauseCount: pauseCountRef.current,
+                        helpCount: helpCountRef.current,
+                        retryCount,
+                        taskSwitchCount: taskSwitchRef.current,
+                        completionRate: 0
+                      }
+                    }).catch(() => {});
+                  }
+                  onExit();
+                }}
                 className="ml-2 text-slate-300 hover:text-white text-xs px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 transition cursor-pointer"
               >
                 Thoát
@@ -728,15 +812,22 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit }) => {
                   Chỉ số năng lực được tăng cường:
                 </span>
                 <div className="flex flex-wrap gap-2">
-                  {game.constructs.map((c) => (
-                    <span
-                      key={c}
-                      className="px-2.5 py-1 bg-white border border-gray-200 text-emerald-700 font-semibold text-xs rounded-lg shadow-2xs flex items-center gap-1"
-                    >
-                      <Sparkles className="w-3 h-3 text-emerald-500" />
-                      {c} (+15 pts)
+                  {Object.entries(appliedDeltas)
+                    .filter((entry): entry is [string, number] => entry[1] !== 0)
+                    .map(([c, delta]) => (
+                      <span
+                        key={c}
+                        className="px-2.5 py-1 bg-white border border-gray-200 text-emerald-700 font-semibold text-xs rounded-lg shadow-2xs flex items-center gap-1"
+                      >
+                        <Sparkles className="w-3 h-3 text-emerald-500" />
+                        {c} ({delta > 0 ? '+' : ''}{delta} pts)
+                      </span>
+                    ))}
+                  {Object.entries(appliedDeltas).filter((entry) => entry[1] !== 0).length === 0 && (
+                    <span className="text-xs text-gray-500">
+                      Chưa có thay đổi năng lực trong phiên này.
                     </span>
-                  ))}
+                  )}
                 </div>
               </div>
 
@@ -808,6 +899,41 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit }) => {
                   </button>
                 )}
               </div>
+
+              {/* Context-aware Psychological Advice (docs/knowledge/psychology/advice) */}
+              {endingAdvice && (
+                <div className={`p-4 rounded-2xl border text-left space-y-2 ${endingAdvice.pick.entry.tone === 'alert' ? 'bg-rose-50/70 border-rose-200' : 'bg-slate-50/80 border-gray-200'}`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
+                      <Brain className={`w-3.5 h-3.5 ${toneStyle(endingAdvice.pick.tone)}`} />
+                      Lời khuyên tâm lý cho riêng em
+                    </span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${toneBadge(endingAdvice.pick.tone)}`}>
+                      {timeOfDayLabel(endingAdvice.pick.timeOfDay)} · {dayTypeLabel(endingAdvice.pick.dayType)}
+                    </span>
+                  </div>
+
+                  <p className={`text-[13px] leading-relaxed font-medium ${toneStyle(endingAdvice.pick.tone)}`}>
+                    {endingAdvice.pick.entry.message}
+                  </p>
+
+                  <div className="bg-white border border-gray-200 rounded-xl p-3 flex items-start gap-2">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block">
+                        Việc nhỏ thử ngay hôm nay
+                      </span>
+                      <span className="text-xs text-gray-700 leading-relaxed">
+                        {endingAdvice.pick.entry.microAction}
+                      </span>
+                    </div>
+                  </div>
+
+                  <p className="text-[10px] text-gray-400 leading-relaxed">
+                    Nguồn khoa học: {endingAdvice.pick.basis}
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>

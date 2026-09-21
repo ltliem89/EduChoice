@@ -16,6 +16,7 @@ import {
   ResilienceProfile,
   WellnessProfile
 } from './studentAnalytics';
+import { adviceForAfterTask } from './adviceEngine';
 
 export type AssistantTopic = 'brief' | 'rhythm' | 'balance' | 'wellness' | 'next';
 export type AssistantTone = 'neutral' | 'positive' | 'warning' | 'alert';
@@ -197,8 +198,15 @@ export function assistantReply(topic: AssistantTopic, i: AssistantInputs, bundle
       return { text: parts.join(' '), tone: lifeBalance.index >= 80 ? 'positive' : lifeBalance.index >= 60 ? 'warning' : 'alert' };
     }
     case 'wellness': {
+      const micro = wellness.level === 'green' || wellness.level === 'yellow'
+        ? adviceForAfterTask({
+            construct: top ? (top[0] as any) : undefined,
+            outcome: wellness.level === 'green' ? 'success' : 'partial',
+            now: new Date()
+          }).entry.microAction
+        : null;
       return {
-        text: `Trạng thái tinh thần: ${wellness.label}. ${wellness.message}`,
+        text: `Trạng thái tinh thần: ${wellness.label}. ${wellness.message}${micro ? ` Việc nhỏ gợi ý: ${micro}` : ''}`,
         tone: wellness.level === 'green' ? 'positive' : wellness.level === 'yellow' ? 'warning' : 'alert'
       };
     }
