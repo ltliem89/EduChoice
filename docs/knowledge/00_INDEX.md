@@ -8,8 +8,23 @@ tags: [knowledge-base, file-list, navigation]
 
 # 00_INDEX — Danh mục toàn bộ file kho tri thức
 
-> Cập nhật ngày: 2026-09-21 · Tổng: **271 file** (psychology 67 · science 171 · tools 25 ·
-> reliability 4 · README/CONVENTIONS/INDEX/MAP 4). Quy ước thêm file mới: xem `CONVENTIONS.md`.
+> Cập nhật ngày: 2026-09-21 · Tổng: **299 file** (psychology 90 · science 171 · tools 25 ·
+> reliability 4 · hệ thống tâm lý 3X 5 · README/CONVENTIONS/INDEX/MAP 4). Audit riêng ở `docs/audit/`.
+> Quy ước thêm file mới: xem `CONVENTIONS.md`.
+
+## 0b. Tài liệu hệ thống tâm lý (3X) — 5 file ở docs/knowledge + 1 audit ở docs/audit
+| File | Vai trò |
+|---|---|
+| `docs/audit/STUDENT_PSYCHOLOGY_KNOWLEDGE_AUDIT.md` | Audit baseline: gaps, sai lệch, mục tiêu 3X |
+| `STUDENT_PSYCHOLOGY_COVERAGE_MATRIX.md` | Bản đồ phủ 36 miền × 72 chủ đề + ưu tiên S/H/M |
+| `STUDENT_PSYCHOLOGY_KNOWLEDGE_V2.md` | Kiến thức tâm lý v2 (tầng, màu, quy trình) |
+| `STUDENT_PSYCHOLOGY_QUICK_CONSULTATION.md` | Khung RAPID + index 23 cards `psy-sit-01…23` |
+| `STUDENT_PSYCHOLOGY_SAFETY_PROTOCOL.md` | SAFETY MODE + SAFEGUARDING + bắt nạt/violence |
+| `STUDENT_PSYCHOLOGY_KNOWLEDGE_CHANGELOG.md` | Changelog tri thức tâm lý |
+
+## 2b. psychology/consult/ (23 file) — Quick Consultation Cards
+`psy-sit-01…23` — các tình huống thường gặp để tư vấn nhanh theo khung RAPID + phân loại màu.
+Xem danh sách chi tiết trong `STUDENT_PSYCHOLOGY_QUICK_CONSULTATION.md` Bảng 2.
 
 ## 0. Root file (4)
 | File | Vai trò |

@@ -81,6 +81,10 @@ cần rèn → biết dùng toolkit can thiệp nào + đọc file tâm lý nào
   (semantics của rel-03) hoặc báo lo âu/căng thẳng cao → chuyển hướng tới `wellness/08`
   (người lớn hỗ trợ), không tiếp tục thêm challenge.
 - Cờ nhạy cảm (bắt nạt, tự hại) → dừng game, hiển thị quy trình `wellness/06` + `08`.
+- **Tư vấn nhanh tình huống cụ thể**: dùng `STUDENT_PSYCHOLOGY_QUICK_CONSULTATION.md`
+  (khung RAPID + index 23 cards `psy-sit-01…23` trong `psychology/consult/`). Cờ tự hại/xâm hại
+  → ưu tiên `STUDENT_PSYCHOLOGY_SAFETY_PROTOCOL.md` (SAFETY MODE / SAFEGUARDING) TRƯỚC khi
+  mở card khác.
 
 ## 5b. Góc > lời khuyên sau nhiệm vụ (advice/)
 - Lời khuyên được chọn bởi `src/utils/adviceEngine.ts` từ `src/data/adviceCatalog.ts`, khớp

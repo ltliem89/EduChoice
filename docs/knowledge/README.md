@@ -57,13 +57,21 @@ docs/knowledge/
   `psychology/development/`, không nhớ cầu may.
 
 ## 4. Thống kê hiện tại
-- Tổng số file Markdown: **271** (đạt ngưỡng 200–500 theo yêu cầu).
-- Phân bổ: psychology 67 · science 171 · tools 25 · reliability 4 · README/CONVENTIONS/INDEX/MAP 4.
+- Tổng số file Markdown: **299** (đạt ngưỡng 200–500 theo yêu cầu).
+- Phân bổ: psychology 90 · science 171 · tools 25 · reliability 4 · hệ thống tâm lý 3X 5 ·
+  README/CONVENTIONS/INDEX/MAP 4 (audit riêng 1 file ở `docs/audit/`).
+- psychology 90 = advice 13 · constructs 20 · development 12 · toolkits 13 · wellness 9 ·
+  **consult 23** (quick consultation cards `psy-sit-01…23`, khung trong
+  `STUDENT_PSYCHOLOGY_QUICK_CONSULTATION.md`).
 
 ## 5. Những việc còn mở (roadmap tri thức)
 - [x] Map 20 construct ↔ 13 toolkit ↔ từng tool tri thức (xem `00_MAP.md`)
 - [x] Kho lời khuyên sau nhiệm vụ: 13 file `psychology/advice/` (psy-400→412) + catalog/engine ở `src/`
+- [x] Mở rộng 3X tâm lý: audit + coverage matrix + KB v2 + quick consultation (23 cards) +
+      safety protocol + changelog (xem các file `STUDENT_PSYCHOLOGY_*`)
 - [ ] Bổ sung giáo án mẫu cho từng construct theo từng bộ SGK (Cánh diều/KNTT/CTST)
 - [ ] Kiểm chứng giá API ở thời điểm triển khai thực tế (giá trong apis/ là tham chiếu
       có thể đổi)
 - [ ] Đối soát nội dung còn `⚠️ CẦN XÁC MINH` với SGK bản in
+- [ ] Chi tiết thêm: file chuyên sâu §36 (safeguarding đầy đủ), §12 (bắt nạt), §41 (self-harm
+      lưu lượng đầy đủ) — đánh dấu trong COVERAGE_MATRIX
