@@ -30,7 +30,8 @@ import {
   Layers,
   Bot,
   Trophy,
-  Crown
+  Crown,
+  Activity
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { GameSpecification, ConstructName } from '../../types';
@@ -42,7 +43,8 @@ import { MultiTaskMissionView } from './MultiTaskMissionView';
 import { FutureAssistant } from './FutureAssistant';
 import { StudentAccountModal } from './StudentAccountModal';
 import { V10Client } from '../../api/v10Client';
-import { levelProgress, selectDailyQuest, dayKey, XP_REWARDS } from '../../utils/gamification';
+import { levelProgress, selectDailyQuest, dayKey, XP_REWARDS, titleForLevel, currentStreak } from '../../utils/gamification';
+import { ACHIEVEMENTS, achievementProgress } from '../../utils/achievements';
 
 export const StudentPortal: React.FC = () => {
   const {
@@ -513,14 +515,14 @@ export const StudentPortal: React.FC = () => {
                             <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" />
                           </div>
                           <span className="text-[11px] text-indigo-200 font-semibold block">
-                            Cấp {lv.level} · {lv.meta.icon} {lv.meta.name}
+                            Cấp {lv.level} · {titleForLevel(lv.level).icon} {titleForLevel(lv.level).title}
                           </span>
                         </div>
                       </div>
 
                       <div className="mt-4 space-y-2">
                         <div className="flex items-center justify-between text-[11px] font-bold">
-                          <span className="text-indigo-200">Chuỗi {studentModel.streakDays || 0} ngày 🔥</span>
+                          <span className="text-indigo-200">Chuỗi {currentStreak(studentModel)} ngày 🔥</span>
                           <span className="font-mono">{lv.xpIntoLevel}/{lv.xpForNext} XP</span>
                         </div>
                         <div className="w-full h-3 bg-white/15 rounded-full overflow-hidden">
@@ -529,11 +531,117 @@ export const StudentPortal: React.FC = () => {
                             style={{ width: `${Math.max(6, lv.pct * 100)}%` }}
                           />
                         </div>
+                        <div className="flex items-center justify-between text-[11px] font-bold">
+                          <span className="text-indigo-200">🪙 {studentModel.coins ?? 0} coin</span>
+                          <span className="text-indigo-200">
+                            {studentModel.achievements?.length ?? 0}/{ACHIEVEMENTS.length} thành tựu
+                          </span>
+                        </div>
                         <p className="text-[10px] text-indigo-200 leading-snug">
-                          Hoàn thành nhiệm vụ và phản tư để nhận XP, mở cấp mới.
+                          Hoàn thành nhiệm vụ và phản tư để nhận XP, coin và mở cấp mới.
                         </p>
                       </div>
                     </div>
+                  </div>
+                );
+              })()}
+
+              {/* ACHIEVEMENT PANEL (spec §14) */}
+              {(() => {
+                const unlocked = new Set((studentModel.achievements || []).map((a) => a.id));
+                return (
+                  <div className="bg-gradient-to-r from-slate-50 to-indigo-50 border border-indigo-100 rounded-3xl p-5 sm:p-6 shadow-2xs">
+                    <div className="flex items-center justify-between mb-4">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-700 flex items-center gap-1.5">
+                        <Award className="w-4 h-4 text-indigo-600" />
+                        <span>Bộ Sưu Tập Thành Tựu ({unlocked.size}/{ACHIEVEMENTS.length})</span>
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+                      {ACHIEVEMENTS.map((def) => {
+                        const isUnlocked = unlocked.has(def.id);
+                        const pct = achievementProgress({ student: studentModel }, def);
+                        return (
+                          <div
+                            key={def.id}
+                            className={`rounded-2xl p-3 border text-center transition ${
+                              isUnlocked
+                                ? 'bg-white border-amber-300 shadow-sm'
+                                : 'bg-white/60 border-gray-200 opacity-80'
+                            }`}
+                          >
+                            <div className={`text-2xl ${isUnlocked ? '' : 'grayscale opacity-40'}`}>{def.icon}</div>
+                            <div className="text-[10px] font-black text-gray-800 mt-1 leading-tight">{def.title}</div>
+                            <div className="text-[9px] text-gray-500 mt-0.5 leading-snug">{def.desc}</div>
+                            {isUnlocked ? (
+                              <div className="text-[9px] font-bold text-amber-700 mt-1.5">+{def.coins} coin ✓</div>
+                            ) : (
+                              <div className="mt-1.5">
+                                <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                  <div className="h-full bg-amber-400 rounded-full" style={{ width: `${Math.max(3, pct)}%` }} />
+                                </div>
+                                <div className="text-[8px] text-gray-400 mt-0.5">đạt {pct}%</div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* GAME EVENT FEED (spec §6.2 event-driven) */}
+              {(() => {
+                const events = studentModel.gameEvents || [];
+                const latest = [...events].slice(-5).reverse();
+                const eventLabel: Record<string, string> = {
+                  QUEST_START: 'Bắt đầu nhiệm vụ',
+                  QUESTION_ANSWER: 'Trả lời tình huống',
+                  MISSION_COMPLETE: 'Hoàn thành nhiệm vụ',
+                  XP_GAIN: 'Nhận XP',
+                  LEVEL_UP: 'Lên cấp',
+                  ACHIEVEMENT_UNLOCK: 'Mở khóa thành tựu',
+                  ITEM_UNLOCK: 'Mở vật phẩm',
+                  STREAK_UPDATE: 'Cập nhật chuỗi ngày'
+                };
+                const eventIcon: Record<string, string> = {
+                  QUEST_START: '▶️',
+                  QUESTION_ANSWER: '✅',
+                  MISSION_COMPLETE: '🏁',
+                  XP_GAIN: '✨',
+                  LEVEL_UP: '⭐',
+                  ACHIEVEMENT_UNLOCK: '🏅',
+                  ITEM_UNLOCK: '🎁',
+                  STREAK_UPDATE: '🔥'
+                };
+                return (
+                  <div className="bg-white border border-gray-200 rounded-3xl p-5 shadow-2xs">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-gray-600 flex items-center gap-1.5 mb-3">
+                      <Activity className="w-4 h-4 text-gray-500" />
+                      <span>Nhật Ký Hành Trình</span>
+                      <span className="text-[9px] text-gray-400 font-semibold">(5 mới nhất)</span>
+                    </span>
+                    {latest.length === 0 ? (
+                      <p className="text-xs text-gray-400">Chưa có hoạt động — hãy bắt đầu một nhiệm vụ nhé!</p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {latest.map((ev, i) => (
+                          <li key={i} className="flex items-center gap-2.5 text-xs">
+                            <span className="text-sm">{eventIcon[ev.type] || '•'}</span>
+                            <span className="text-gray-700 font-semibold flex-1 truncate">
+                              {eventLabel[ev.type] || ev.type}
+                            </span>
+                            <span className="text-gray-400 flex-1 truncate text-right font-mono text-[10px]">
+                              {ev.detail || ''}
+                            </span>
+                            <span className="text-[10px] text-gray-400 shrink-0">
+                              {ev.type === 'XP_GAIN' || ev.type === 'MISSION_COMPLETE' || ev.type === 'ACHIEVEMENT_UNLOCK' || ev.type === 'LEVEL_UP' ? `+${ev.amount ?? 0}` : ''}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                 );
               })()}

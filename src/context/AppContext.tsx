@@ -14,7 +14,8 @@ import {
   StrengthItem,
   GrowthAreaItem,
   FeedbackMessage,
-  UserRole
+  UserRole,
+  GameEventType
 } from '../types';
 import { DEFAULT_GAMES } from '../data/defaultGames';
 import { DEFAULT_SCRIPTS } from '../data/defaultScripts';
@@ -45,6 +46,9 @@ interface AppContextType {
   studentModel: StudentModel;
   updateStudentProfile: (profile: Partial<StudentModel>) => void;
   awardXp: (amount: number) => void;
+  awardCoins: (amount: number) => void;
+  logGameEvent: (type: GameEventType, detail?: string, amount?: number) => void;
+  unlockAchievement: (achievementId: string) => void;
   completeDailyQuest: (gameId: string) => void;
   savedAccounts: StudentModel[];
   switchStudentAccount: (userId: string) => void;
@@ -798,6 +802,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
+  const awardCoins = (amount: number) => {
+    if (!amount) return;
+    setStudentModel((prev) => {
+      const updated = {
+        ...prev,
+        coins: (prev.coins || 0) + amount,
+        lastActive: new Date().toISOString()
+      };
+      setSavedAccounts((accounts) =>
+        accounts.map((acc) => (acc.userId === updated.userId ? { ...acc, coins: updated.coins } : acc))
+      );
+      return updated;
+    });
+  };
+
+  const logGameEvent = (type: GameEventType, detail?: string, amount?: number) => {
+    setStudentModel((prev) => {
+      const entry = { type, at: new Date().toISOString(), detail, amount };
+      const gameEvents = [...(prev.gameEvents || []), entry].slice(-100);
+      const updated = { ...prev, gameEvents, lastActive: new Date().toISOString() };
+      setSavedAccounts((accounts) =>
+        accounts.map((acc) => (acc.userId === updated.userId ? { ...acc, gameEvents } : acc))
+      );
+      return updated;
+    });
+  };
+
+  const unlockAchievement = (achievementId: string) => {
+    setStudentModel((prev) => {
+      const has = (prev.achievements || []).some((a) => a.id === achievementId);
+      if (has) return prev;
+      const achievements = [...(prev.achievements || []), { id: achievementId, unlockedAt: new Date().toISOString() }];
+      const updated = { ...prev, achievements, lastActive: new Date().toISOString() };
+      setSavedAccounts((accounts) =>
+        accounts.map((acc) => (acc.userId === updated.userId ? { ...acc, achievements } : acc))
+      );
+      return updated;
+    });
+  };
+
   const completeDailyQuest = (gameId: string) => {
     const today = new Date().toISOString().slice(0, 10);
     setStudentModel((prev) => {
@@ -1198,6 +1242,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         studentModel,
         updateStudentProfile,
         awardXp,
+        awardCoins,
+        logGameEvent,
+        unlockAchievement,
         completeDailyQuest,
         savedAccounts,
         switchStudentAccount,

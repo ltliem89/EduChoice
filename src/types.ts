@@ -121,6 +121,24 @@ export type BehaviorEventType =
   | 'goal_created'
   | 'goal_updated';
 
+// Universal Educational Game OS Spec §6.2 — gamified event system
+export type GameEventType =
+  | 'QUEST_START'
+  | 'QUESTION_ANSWER'
+  | 'MISSION_COMPLETE'
+  | 'XP_GAIN'
+  | 'LEVEL_UP'
+  | 'ACHIEVEMENT_UNLOCK'
+  | 'ITEM_UNLOCK'
+  | 'STREAK_UPDATE';
+
+export interface GameEventEntry {
+  type: GameEventType;
+  at: string;
+  amount?: number;
+  detail?: string;
+}
+
 export interface BehaviorEvent {
   eventId: string;
   sessionId: string;
@@ -290,8 +308,14 @@ export interface StudentModel {
   badge?: string;
   streakDays?: number;
   xp?: number;
+  coins?: number;
   dailyQuestDate?: string;
   dailyQuestGameIds?: string[];
+  achievements?: {
+    id: string;
+    unlockedAt: string;
+  }[];
+  gameEvents?: GameEventEntry[];
   age: number;
   gradeLevel: string;
   cohort?: string;

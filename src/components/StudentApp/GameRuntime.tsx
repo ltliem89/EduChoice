@@ -27,10 +27,13 @@ import { AdviceOutcome } from '../../data/adviceCatalog';
 import { useToast } from '../../context/ToastContext';
 import {
   XP_REWARDS,
+  COIN_REWARDS,
   comboXp,
+  coinFromCombo,
   levelProgress,
   dayKey
 } from '../../utils/gamification';
+import { evaluateAchievements, achievementProgress, achievementById } from '../../utils/achievements';
 
 interface GameRuntimeProps {
   game: GameSpecification;
@@ -39,7 +42,7 @@ interface GameRuntimeProps {
 }
 
 export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit, isDailyQuest = false }) => {
-  const { logBehaviorEvent, updateStudentConstruct, addCustomMicroAction, registerSessionCompletion, studentModel, awardXp, completeDailyQuest } = useApp();
+  const { logBehaviorEvent, updateStudentConstruct, addCustomMicroAction, registerSessionCompletion, studentModel, awardXp, awardCoins, logGameEvent, unlockAchievement, completeDailyQuest } = useApp();
   const toast = useToast();
   const [acceptedMicroAction, setAcceptedMicroAction] = useState(false);
   const [v9ResultSaved, setV9ResultSaved] = useState(false);
@@ -57,9 +60,10 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit, isDailyQ
   const [retryCount, setRetryCount] = useState(0);
   // Applied construct deltas during this run (real, not displayed constants)
   const [appliedDeltas, setAppliedDeltas] = useState<Record<string, number>>({});
-  // Gamification: combo streak + session XP earned (real, no fabrication)
+  // Gamification: combo streak + session rewards earned (real, no fabrication)
   const [combo, setCombo] = useState(0);
   const [sessionXp, setSessionXp] = useState(0);
+  const [sessionCoins, setSessionCoins] = useState(0);
   const [xpFlash, setXpFlash] = useState<{ id: number; amount: number } | null>(null);
   const xpFlashId = useRef(0);
   const levelBeforeRef = useRef<number>(levelProgress(studentModel.xp || 0).level);
@@ -115,11 +119,12 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit, isDailyQ
     return { pick, completionRate };
   }, [currentScene?.type, currentSceneId, retryCount, game.scenes, game.constructs]);
 
-  // Gamification: detect level-up and celebrate (real XP, no fabrication)
+  // Gamification: detect level-up and celebrate + log event (real XP, no fabrication)
   useEffect(() => {
     const nowLevel = levelProgress(studentModel.xp || 0).level;
     if (nowLevel > levelBeforeRef.current) {
       SoundEngine.playSuccess();
+      logGameEvent('LEVEL_UP', game.title, nowLevel);
       toast.success(`Em đã lên cấp ${nowLevel}! ${levelProgress(studentModel.xp || 0).meta.icon}`, '⭐ Level Up', { duration: 4500 });
     }
     levelBeforeRef.current = nowLevel;
@@ -134,6 +139,7 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit, isDailyQ
         gameId: game.gameId,
         title: game.title
       });
+      logGameEvent('QUEST_START', game.title);
     }
   }, [game.gameId]);
 
@@ -236,20 +242,52 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit, isDailyQ
         reflectionsCompleted: reflectionText.trim() ? 1 : 0
       });
 
-      // Gamification: completion + daily quest (only once per game run)
+      // Completion rewards: XP + coins + gamified events (spec §12/§13/§6.2)
       awardXp(XP_REWARDS.completion);
+      awardCoins(COIN_REWARDS.completion);
       setSessionXp((s) => s + XP_REWARDS.completion);
+      setSessionCoins((s) => s + COIN_REWARDS.completion);
+      logGameEvent('MISSION_COMPLETE', game.title, XP_REWARDS.completion);
+      logGameEvent('XP_GAIN', game.title, XP_REWARDS.completion);
+
       const today = dayKey(new Date());
       const alreadyCompletd = studentModel.dailyQuestDate === today && !!studentModel.dailyQuestGameIds?.includes(game.gameId);
       if (isDailyQuest && !didCompleteDailyQuest.current && !alreadyCompletd) {
         completeDailyQuest(game.gameId);
         awardXp(XP_REWARDS.dailyQuestBonus);
+        awardCoins(COIN_REWARDS.dailyQuestBonus);
         setSessionXp((s) => s + XP_REWARDS.dailyQuestBonus);
+        setSessionCoins((s) => s + COIN_REWARDS.dailyQuestBonus);
         didCompleteDailyQuest.current = true;
+        logGameEvent('ITEM_UNLOCK', `daily-quest:${game.gameId}`, COIN_REWARDS.dailyQuestBonus);
+        logGameEvent('STREAK_UPDATE', dayKey(new Date()));
         toast.success('Nhiệm vụ hằng ngày hoàn thành! +40 XP', '🎯 Nhiệm Vụ Hôm Nay', { duration: 4000 });
       }
+
+      // Achievement evaluation at session end (real data only, spec §14)
+      const newlyUnlocked = evaluateAchievements(
+        {
+          student: studentModel,
+          session: {
+            maxCombo: combo,
+            retryCount,
+            hintCount: helpCountRef.current,
+            completionRate,
+            score,
+            dailyQuestCompleted: didCompleteDailyQuest.current
+          }
+        },
+        (studentModel?.achievements || []).map((a) => a.id)
+      );
+      newlyUnlocked.forEach((def) => {
+        unlockAchievement(def.id);
+        awardCoins(def.coins);
+        setSessionCoins((s) => s + def.coins);
+        logGameEvent(def.event, def.title, def.coins);
+        toast.success(`Mở khóa: ${def.title} ${def.icon} (+${def.coins} coin)`, '🏅 Khám Phá Thành Tựu', { duration: 4500 });
+      });
     }
-  }, [currentScene?.type, v9ResultSaved, game.gameId, game.scenes, studentModel?.userId, studentModel?.constructs, retryCount, history.length, registerSessionCompletion, reflectionText, isDailyQuest]);
+  }, [currentScene?.type, v9ResultSaved, game.gameId, game.scenes, studentModel?.userId, studentModel?.constructs, retryCount, history.length, registerSessionCompletion, reflectionText, isDailyQuest, combo]);
 
   // Procedural Canvas Avatar Animation
   useEffect(() => {
@@ -378,14 +416,17 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit, isDailyQ
     setSelectedChoiceId(choice.id);
     choicesMadeRef.current += 1;
 
-    // Gamification: award XP with combo multiplier (real event-driven)
+    // Gamification: award XP + coins with combo multiplier (real event-driven)
     const gained = comboXp(combo + 1);
     awardXp(gained);
+    awardCoins(coinFromCombo(combo + 1));
     setSessionXp((s) => s + gained);
+    setSessionCoins((s) => s + coinFromCombo(combo + 1));
     setCombo((c) => c + 1);
     xpFlashId.current += 1;
     setXpFlash({ id: xpFlashId.current, amount: gained });
     setTimeout(() => setXpFlash((f) => (f && f.id === xpFlashId.current ? null : f)), 1200);
+    logGameEvent('QUESTION_ANSWER', choice.label, gained);
 
     logBehaviorEvent('choice_made', currentScene?.id || '', {
       choiceId: choice.id,
@@ -458,9 +499,12 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit, isDailyQ
       question: currentScene?.reflectionQuestion || currentScene?.content
     });
 
-    // Gamification: reflection earns XP
+    // Gamification: reflection earns XP + coins
     awardXp(XP_REWARDS.reflection);
+    awardCoins(COIN_REWARDS.reflection);
     setSessionXp((s) => s + XP_REWARDS.reflection);
+    setSessionCoins((s) => s + COIN_REWARDS.reflection);
+    logGameEvent('XP_GAIN', 'reflection', XP_REWARDS.reflection);
 
     updateStudentConstruct('Reflection', 15);
     setAppliedDeltas((prev) => ({
@@ -901,10 +945,19 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit, isDailyQ
                     +{sessionXp} XP
                   </span>
                 </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <span>🪙</span>
+                    <span>Coin nhận trong phiên</span>
+                  </span>
+                  <span className="font-mono font-black text-orange-600">
+                    +{sessionCoins} coin
+                  </span>
+                </div>
                 {combo >= 2 && (
                   <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1 flex items-center gap-1.5">
                     <Flame className="w-3.5 h-3.5" />
-                    Chuỗi phản xạ nhanh đạt Combo x{combo} — thưởng thêm XP!
+                    Chuỗi phản xạ nhanh đạt Combo x{combo} — thưởng thêm XP và coin!
                   </p>
                 )}
                 {isDailyQuest && didCompleteDailyQuest.current && (
