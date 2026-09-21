@@ -28,7 +28,9 @@ import {
   Trash2,
   Database,
   Layers,
-  Bot
+  Bot,
+  Trophy,
+  Crown
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { GameSpecification, ConstructName } from '../../types';
@@ -37,10 +39,10 @@ import { SoundEngine } from '../../utils/soundEffects';
 import { InterventionModal } from './InterventionModals';
 import { StudentJourney } from './StudentJourney';
 import { MultiTaskMissionView } from './MultiTaskMissionView';
-import { FutureCalmHome } from './FutureCalmHome';
 import { FutureAssistant } from './FutureAssistant';
 import { StudentAccountModal } from './StudentAccountModal';
 import { V10Client } from '../../api/v10Client';
+import { levelProgress, selectDailyQuest, dayKey, XP_REWARDS } from '../../utils/gamification';
 
 export const StudentPortal: React.FC = () => {
   const {
@@ -57,7 +59,7 @@ export const StudentPortal: React.FC = () => {
   } = useApp();
 
   const [activePlayingGame, setActivePlayingGame] = useState<GameSpecification | null>(null);
-  const [activeTab, setActiveTab] = useState<'challenges' | 'future_home' | 'journey' | 'insights' | 'missions' | 'toolkits' | 'profile'>('challenges');
+  const [activeTab, setActiveTab] = useState<'challenges' | 'journey' | 'insights' | 'missions' | 'toolkits' | 'profile'>('challenges');
   const [selectedConstructFilter, setSelectedConstructFilter] = useState<string>('all');
   const [selectedPracticeToolkit, setSelectedPracticeToolkit] = useState<string | null>(null);
 
@@ -193,6 +195,7 @@ export const StudentPortal: React.FC = () => {
           <GameRuntime
             game={activePlayingGame}
             onExit={() => setActivePlayingGame(null)}
+            isDailyQuest={selectDailyQuest(publishedGames, new Date())?.gameId === activePlayingGame.gameId}
           />
         </div>
       ) : (
@@ -345,21 +348,6 @@ export const StudentPortal: React.FC = () => {
             <button
               onClick={() => {
                 SoundEngine.playClick();
-                setActiveTab('future_home');
-              }}
-              className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition flex items-center gap-2 cursor-pointer whitespace-nowrap ${
-                activeTab === 'future_home'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
-              }`}
-            >
-              <Sparkles className="w-4 h-4 text-emerald-400" />
-              <span>Không Gian Tương Lai (V7 Future UI)</span>
-            </button>
-
-            <button
-              onClick={() => {
-                SoundEngine.playClick();
                 setActiveTab('journey');
               }}
               className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition flex items-center gap-2 cursor-pointer whitespace-nowrap ${
@@ -433,17 +421,6 @@ export const StudentPortal: React.FC = () => {
             </button>
           </div>
 
-          {/* TAB: V7 FUTURE CALM HOME (Master Spec V7.31 - V7.33) */}
-          {activeTab === 'future_home' && (
-            <FutureCalmHome
-              onPlayGame={(gameId) => {
-                const target = games.find((g) => g.id === gameId);
-                if (target) handleStartGame(target);
-              }}
-              onNavigateTab={(tab) => setActiveTab(tab as any)}
-            />
-          )}
-
           {/* TAB: STUDENT JOURNEY (Master Spec Section 54) */}
           {activeTab === 'journey' && <StudentJourney />}
 
@@ -465,6 +442,102 @@ export const StudentPortal: React.FC = () => {
           {/* TAB 1: CHALLENGES */}
           {activeTab === 'challenges' && (
             <div className="space-y-6">
+              {/* QUEST HUB: Daily Quest + Player Level (Game hóa) */}
+              {(() => {
+                const lv = levelProgress(studentModel.xp || 0);
+                const quest = selectDailyQuest(publishedGames, new Date());
+                const today = dayKey(new Date());
+                const questDone = !!quest && studentModel.dailyQuestDate === today && !!studentModel.dailyQuestGameIds?.includes(quest.gameId);
+                return (
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    {/* Daily Quest Card */}
+                    <div className="lg:col-span-2 bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 border border-amber-200 rounded-3xl p-5 sm:p-6 shadow-2xs">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-amber-800 flex items-center gap-1.5">
+                          <Trophy className="w-4 h-4 text-amber-600" />
+                          <span>Nhiệm Vụ Hằng Ngày</span>
+                        </span>
+                        <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                          +{XP_REWARDS.dailyQuestBonus} XP
+                        </span>
+                      </div>
+
+                      {quest ? (
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                          <div className="space-y-1">
+                            <h3 className="text-base font-black text-gray-900">{quest.title}</h3>
+                            <p className="text-xs text-gray-600 leading-relaxed">
+                              {quest.description || quest.scenes[0]?.content}
+                            </p>
+                            <div className="flex flex-wrap gap-1.5 pt-1">
+                              {quest.constructs.slice(0, 3).map((c) => (
+                                <span key={c} className="text-[10px] px-2 py-0.5 bg-white border border-amber-200 text-amber-900 rounded-lg font-semibold">
+                                  {c}
+                                </span>
+                              ))}
+                              <span className="text-[10px] px-2 py-0.5 bg-white border border-amber-200 text-amber-900 rounded-lg font-semibold">
+                                {quest.durationMinutes} phút
+                              </span>
+                            </div>
+                          </div>
+
+                          {questDone ? (
+                            <div className="px-5 py-3 bg-emerald-100 border border-emerald-300 text-emerald-800 rounded-2xl font-bold text-sm flex items-center gap-2 self-start sm:self-center whitespace-nowrap">
+                              <CheckCircle2 className="w-4 h-4" />
+                              <span>Đã hoàn thành hôm nay!</span>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => handleStartGame(quest)}
+                              className="px-5 py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-sm rounded-2xl shadow-md transition flex items-center gap-2 self-start sm:self-center whitespace-nowrap cursor-pointer active:scale-95"
+                            >
+                              <Play className="w-4 h-4 fill-current" />
+                              <span>Chơi nhiệm vụ +{XP_REWARDS.dailyQuestBonus} XP</span>
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-600">Chưa có thử thách xuất bản hôm nay. Hãy quay lại sau nhé!</p>
+                      )}
+                    </div>
+
+                    {/* Player Level Card */}
+                    <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-800 text-white rounded-3xl p-5 shadow-md flex flex-col justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-11 h-11 rounded-2xl bg-white/15 border border-white/20 flex items-center justify-center text-xl">
+                          {studentModel.avatar || '🚀'}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm font-black truncate">{studentModel.name || 'Học viên'}</span>
+                            <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                          </div>
+                          <span className="text-[11px] text-indigo-200 font-semibold block">
+                            Cấp {lv.level} · {lv.meta.icon} {lv.meta.name}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 space-y-2">
+                        <div className="flex items-center justify-between text-[11px] font-bold">
+                          <span className="text-indigo-200">Chuỗi {studentModel.streakDays || 0} ngày 🔥</span>
+                          <span className="font-mono">{lv.xpIntoLevel}/{lv.xpForNext} XP</span>
+                        </div>
+                        <div className="w-full h-3 bg-white/15 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-amber-400 to-amber-300 rounded-full transition-all duration-700"
+                            style={{ width: `${Math.max(6, lv.pct * 100)}%` }}
+                          />
+                        </div>
+                        <p className="text-[10px] text-indigo-200 leading-snug">
+                          Hoàn thành nhiệm vụ và phản tư để nhận XP, mở cấp mới.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Friendly AI Companion Recommendation */}
               <div className="bg-gradient-to-r from-purple-50 via-indigo-50 to-blue-50 border border-indigo-100 rounded-3xl p-5 sm:p-6 shadow-2xs">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">

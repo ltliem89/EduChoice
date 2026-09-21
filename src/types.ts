@@ -289,6 +289,9 @@ export interface StudentModel {
   avatar?: string;
   badge?: string;
   streakDays?: number;
+  xp?: number;
+  dailyQuestDate?: string;
+  dailyQuestGameIds?: string[];
   age: number;
   gradeLevel: string;
   cohort?: string;

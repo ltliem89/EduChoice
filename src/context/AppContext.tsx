@@ -44,6 +44,8 @@ interface AppContextType {
   // Student & Telemetry
   studentModel: StudentModel;
   updateStudentProfile: (profile: Partial<StudentModel>) => void;
+  awardXp: (amount: number) => void;
+  completeDailyQuest: (gameId: string) => void;
   savedAccounts: StudentModel[];
   switchStudentAccount: (userId: string) => void;
   createStudentAccount: (accountData: { name: string; gradeLevel: string; avatar: string; badge: string; cohort?: string }) => void;
@@ -781,6 +783,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
+  const awardXp = (amount: number) => {
+    if (!amount) return;
+    setStudentModel((prev) => {
+      const updated = {
+        ...prev,
+        xp: (prev.xp || 0) + amount,
+        lastActive: new Date().toISOString()
+      };
+      setSavedAccounts((accounts) =>
+        accounts.map((acc) => (acc.userId === updated.userId ? { ...acc, xp: updated.xp } : acc))
+      );
+      return updated;
+    });
+  };
+
+  const completeDailyQuest = (gameId: string) => {
+    const today = new Date().toISOString().slice(0, 10);
+    setStudentModel((prev) => {
+      const idsToday = prev.dailyQuestDate === today ? prev.dailyQuestGameIds || [] : [];
+      if (idsToday.includes(gameId)) return prev;
+      const updated = {
+        ...prev,
+        dailyQuestDate: today,
+        dailyQuestGameIds: [...idsToday, gameId],
+        lastActive: new Date().toISOString()
+      };
+      setSavedAccounts((accounts) =>
+        accounts.map((acc) =>
+          acc.userId === updated.userId ? { ...acc, dailyQuestDate: today, dailyQuestGameIds: updated.dailyQuestGameIds } : acc
+        )
+      );
+      return updated;
+    });
+  };
+
   const switchStudentAccount = (userId: string) => {
     const target = savedAccounts.find((a) => a.userId === userId);
     if (target) {
@@ -1160,6 +1197,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateGameStatus,
         studentModel,
         updateStudentProfile,
+        awardXp,
+        completeDailyQuest,
         savedAccounts,
         switchStudentAccount,
         createStudentAccount,

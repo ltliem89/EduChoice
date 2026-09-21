@@ -13,7 +13,9 @@ import {
   ChevronRight,
   Pause,
   Play,
-  Brain
+  Brain,
+  Flame,
+  Trophy
 } from 'lucide-react';
 import { GameSpecification, Scene, Choice, ConstructName } from '../../types';
 import { useApp } from '../../context/AppContext';
@@ -22,14 +24,23 @@ import { InterventionModal } from './InterventionModals';
 import { V9Client } from '../../api/v9Client';
 import { adviceForAfterTask, timeOfDayLabel, dayTypeLabel, toneStyle, toneBadge } from '../../utils/adviceEngine';
 import { AdviceOutcome } from '../../data/adviceCatalog';
+import { useToast } from '../../context/ToastContext';
+import {
+  XP_REWARDS,
+  comboXp,
+  levelProgress,
+  dayKey
+} from '../../utils/gamification';
 
 interface GameRuntimeProps {
   game: GameSpecification;
   onExit?: () => void;
+  isDailyQuest?: boolean;
 }
 
-export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit }) => {
-  const { logBehaviorEvent, updateStudentConstruct, addCustomMicroAction, registerSessionCompletion, studentModel } = useApp();
+export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit, isDailyQuest = false }) => {
+  const { logBehaviorEvent, updateStudentConstruct, addCustomMicroAction, registerSessionCompletion, studentModel, awardXp, completeDailyQuest } = useApp();
+  const toast = useToast();
   const [acceptedMicroAction, setAcceptedMicroAction] = useState(false);
   const [v9ResultSaved, setV9ResultSaved] = useState(false);
   const [v9Verified, setV9Verified] = useState(false);
@@ -46,6 +57,13 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit }) => {
   const [retryCount, setRetryCount] = useState(0);
   // Applied construct deltas during this run (real, not displayed constants)
   const [appliedDeltas, setAppliedDeltas] = useState<Record<string, number>>({});
+  // Gamification: combo streak + session XP earned (real, no fabrication)
+  const [combo, setCombo] = useState(0);
+  const [sessionXp, setSessionXp] = useState(0);
+  const [xpFlash, setXpFlash] = useState<{ id: number; amount: number } | null>(null);
+  const xpFlashId = useRef(0);
+  const levelBeforeRef = useRef<number>(levelProgress(studentModel.xp || 0).level);
+  const didCompleteDailyQuest = useRef(false);
 
   // Timer per scene or overall session
   const [timeLeft, setTimeLeft] = useState<number>(45);
@@ -96,6 +114,16 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit }) => {
     }
     return { pick, completionRate };
   }, [currentScene?.type, currentSceneId, retryCount, game.scenes, game.constructs]);
+
+  // Gamification: detect level-up and celebrate (real XP, no fabrication)
+  useEffect(() => {
+    const nowLevel = levelProgress(studentModel.xp || 0).level;
+    if (nowLevel > levelBeforeRef.current) {
+      SoundEngine.playSuccess();
+      toast.success(`Em đã lên cấp ${nowLevel}! ${levelProgress(studentModel.xp || 0).meta.icon}`, '⭐ Level Up', { duration: 4500 });
+    }
+    levelBeforeRef.current = nowLevel;
+  }, [studentModel.xp]);
 
   // Initialize game start
   useEffect(() => {
@@ -207,8 +235,21 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit }) => {
         helpRequestCount: helpCountRef.current,
         reflectionsCompleted: reflectionText.trim() ? 1 : 0
       });
+
+      // Gamification: completion + daily quest (only once per game run)
+      awardXp(XP_REWARDS.completion);
+      setSessionXp((s) => s + XP_REWARDS.completion);
+      const today = dayKey(new Date());
+      const alreadyCompletd = studentModel.dailyQuestDate === today && !!studentModel.dailyQuestGameIds?.includes(game.gameId);
+      if (isDailyQuest && !didCompleteDailyQuest.current && !alreadyCompletd) {
+        completeDailyQuest(game.gameId);
+        awardXp(XP_REWARDS.dailyQuestBonus);
+        setSessionXp((s) => s + XP_REWARDS.dailyQuestBonus);
+        didCompleteDailyQuest.current = true;
+        toast.success('Nhiệm vụ hằng ngày hoàn thành! +40 XP', '🎯 Nhiệm Vụ Hôm Nay', { duration: 4000 });
+      }
     }
-  }, [currentScene?.type, v9ResultSaved, game.gameId, game.scenes, studentModel?.userId, studentModel?.constructs, retryCount, history.length, registerSessionCompletion, reflectionText]);
+  }, [currentScene?.type, v9ResultSaved, game.gameId, game.scenes, studentModel?.userId, studentModel?.constructs, retryCount, history.length, registerSessionCompletion, reflectionText, isDailyQuest]);
 
   // Procedural Canvas Avatar Animation
   useEffect(() => {
@@ -337,11 +378,21 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit }) => {
     setSelectedChoiceId(choice.id);
     choicesMadeRef.current += 1;
 
+    // Gamification: award XP with combo multiplier (real event-driven)
+    const gained = comboXp(combo + 1);
+    awardXp(gained);
+    setSessionXp((s) => s + gained);
+    setCombo((c) => c + 1);
+    xpFlashId.current += 1;
+    setXpFlash({ id: xpFlashId.current, amount: gained });
+    setTimeout(() => setXpFlash((f) => (f && f.id === xpFlashId.current ? null : f)), 1200);
+
     logBehaviorEvent('choice_made', currentScene?.id || '', {
       choiceId: choice.id,
       choiceLabel: choice.label,
       consequenceId: choice.consequenceId,
-      timeRemaining: timeLeft
+      timeRemaining: timeLeft,
+      xpGained: gained
     });
 
     if (choice.constructImpact) {
@@ -387,6 +438,7 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit }) => {
   const handleRetry = () => {
     SoundEngine.playSelect();
     setRetryCount((r) => r + 1);
+    setCombo(0);
     logBehaviorEvent('retry', currentSceneId, {
       attempt: retryCount + 1,
       reason: 'Học sinh chủ động chọn thử nghiệm lại kịch bản với chiến lược mới'
@@ -405,6 +457,10 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit }) => {
       answer: reflectionText,
       question: currentScene?.reflectionQuestion || currentScene?.content
     });
+
+    // Gamification: reflection earns XP
+    awardXp(XP_REWARDS.reflection);
+    setSessionXp((s) => s + XP_REWARDS.reflection);
 
     updateStudentConstruct('Reflection', 15);
     setAppliedDeltas((prev) => ({
@@ -470,6 +526,20 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit }) => {
               <span>00:{timeLeft < 10 ? `0${timeLeft}` : timeLeft}</span>
             </div>
           )}
+
+          {/* Combo streak indicator (game hóa) */}
+          {currentScene.type !== 'ending' && combo >= 2 && (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-mono font-bold animate-pulse">
+              <Flame className="w-3.5 h-3.5" />
+              <span>Combo x{combo} · +{comboXp(combo)}</span>
+            </div>
+          )}
+
+          {/* Session XP earned */}
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-mono font-bold">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>+{sessionXp} XP</span>
+          </div>
 
           {/* Constructs Tags */}
           <div className="hidden sm:flex items-center gap-1.5">
@@ -553,7 +623,17 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit }) => {
       </div>
 
       {/* Main Interactive Stage */}
-      <div className="p-6 md:p-8 flex-1 flex flex-col justify-between bg-gradient-to-b from-slate-50 to-white">
+      <div className="p-6 md:p-8 flex-1 flex flex-col justify-between bg-gradient-to-b from-slate-50 to-white relative">
+        {/* XP earned floating indicator (game hóa) */}
+        {xpFlash && (
+          <div
+            key={xpFlash.id}
+            className="absolute top-4 right-6 z-20 px-3.5 py-1.5 rounded-2xl bg-amber-400 text-amber-950 font-black text-sm shadow-lg animate-bounce flex items-center gap-1.5"
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>+{xpFlash.amount} XP</span>
+          </div>
+        )}
         {/* Top Avatar & Scene Info */}
         <div className="flex flex-col md:flex-row items-center gap-6 mb-6">
           {/* 2D Canvas Character Avatar */}
@@ -653,7 +733,10 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit }) => {
                           type="button"
                           onClick={() => {
                             const willOpen = showToolkitHint !== choice.id;
-                            if (willOpen) helpCountRef.current += 1;
+                            if (willOpen) {
+                              helpCountRef.current += 1;
+                              setCombo(0);
+                            }
                             logBehaviorEvent('hint_requested', currentScene.id, {
                               choiceId: choice.id
                             });
@@ -807,8 +890,30 @@ export const GameRuntime: React.FC<GameRuntimeProps> = ({ game, onExit }) => {
                 </div>
               </div>
 
-              <div className="bg-slate-50 p-4 rounded-xl border border-gray-200 text-left space-y-2">
-                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider block">
+              <div className="bg-slate-50 p-4 rounded-xl border border-gray-200 space-y-3">
+                {/* Session XP earned */}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Điểm kinh nghiệm nhận trong phiên</span>
+                  </span>
+                  <span className="font-mono font-black text-amber-600">
+                    +{sessionXp} XP
+                  </span>
+                </div>
+                {combo >= 2 && (
+                  <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1 flex items-center gap-1.5">
+                    <Flame className="w-3.5 h-3.5" />
+                    Chuỗi phản xạ nhanh đạt Combo x{combo} — thưởng thêm XP!
+                  </p>
+                )}
+                {isDailyQuest && didCompleteDailyQuest.current && (
+                  <p className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1 flex items-center gap-1.5">
+                    <Trophy className="w-3.5 h-3.5" />
+                    Nhiệm vụ hằng ngày hoàn thành: +{XP_REWARDS.dailyQuestBonus} XP
+                  </p>
+                )}
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider block pt-1">
                   Chỉ số năng lực được tăng cường:
                 </span>
                 <div className="flex flex-wrap gap-2">
