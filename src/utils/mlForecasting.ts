@@ -12,6 +12,7 @@ export interface TimePoint {
   date: string;
   label: string;
   actual: number; // 0..100
+  isDemo?: boolean; // true = dữ liệu minh hoạ, không phải đo thật (audit rel-04)
 }
 
 export interface ForecastPoint {
@@ -446,9 +447,30 @@ export function fitHoltWinters(points: TimePoint[], forecastSteps: number = 7, a
 }
 
 /**
- * Multi-Construct Synthetic & Real Historical Series Generator
+ * Chuỗi thời gian cho ML Forecasting.
+ * Ưu tiên dữ liệu THẬT từ growthHistory; fallback demo có cờ isDemo=true (audit rel-04).
  */
-export function getConstructTimeSeriesData(constructKey: string): TimePoint[] {
+export function getConstructTimeSeriesData(
+  constructKey: string,
+  growthHistory?: { date: string; construct: string; score: number }[]
+): TimePoint[] {
+  // 1. Dữ liệu thật nếu có đủ ≥2 lần đo cho construct này
+  const real = (growthHistory || [])
+    .filter((h) => h.construct === constructKey && typeof h.score === 'number')
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((h, idx) => ({
+      index: idx + 1,
+      date: h.date,
+      label: h.date.slice(5),
+      actual: Math.min(100, Math.max(0, h.score)),
+      isDemo: false
+    }));
+
+  if (real.length >= 2) {
+    return real;
+  }
+
+  // 2. Fallback demo được đánh dấu rõ (tránh nhầm lẫn với đo thật)
   const baseDates = [
     '2026-08-25', '2026-08-27', '2026-08-29', '2026-08-31',
     '2026-09-02', '2026-09-04', '2026-09-06', '2026-09-08',
@@ -461,8 +483,7 @@ export function getConstructTimeSeriesData(constructKey: string): TimePoint[] {
     Prioritization: [42, 45, 43, 46, 49, 50, 48, 52, 54, 53, 56],
     Persistence: [58, 60, 59, 63, 65, 67, 69, 71, 72, 74, 76],
     SelfRegulation: [50, 49, 52, 51, 55, 54, 58, 57, 60, 59, 63],
-    DistractionRecovery: [38, 40, 42, 45, 44, 48, 52, 55, 54, 58, 62],
-    TaskCompletion: [60, 62, 58, 65, 70, 68, 75, 78, 80, 82, 85]
+    DistractionRecovery: [38, 40, 42, 45, 44, 48, 52, 55, 54, 58, 62]
   };
 
   const values = seriesMap[constructKey] || seriesMap['overall'];
@@ -471,6 +492,7 @@ export function getConstructTimeSeriesData(constructKey: string): TimePoint[] {
     index: idx + 1,
     date: baseDates[idx] || `2026-09-${10 + idx}`,
     label: `Phiên ${idx + 1}`,
-    actual: val
+    actual: val,
+    isDemo: true
   }));
 }

@@ -1,21 +1,9 @@
 import { GameSpecification, ValidationResult } from '../types';
 import { APPROVED_TOOLKITS } from '../data/approvedToolkits';
+import { CONSTRUCT_LABELS } from './studentAnalytics';
 
-const APPROVED_CONSTRUCTS = new Set([
-  'Planning',
-  'Prioritization',
-  'ProblemSolving',
-  'SelfRegulation',
-  'AttentionControl',
-  'HelpSeeking',
-  'Reflection',
-  'Adaptability',
-  'GoalSetting',
-  'Communication',
-  'ConsequencePrediction',
-  'ProblemDecomposition',
-  'TimeManagement'
-]);
+// Single source of truth: CONSTRUCT_LABELS (20 construct chính thức, types.ts)
+const APPROVED_CONSTRUCTS = new Set<string>(Object.keys(CONSTRUCT_LABELS));
 
 export function validateGameSpecification(spec: any): ValidationResult {
   const errors: string[] = [];

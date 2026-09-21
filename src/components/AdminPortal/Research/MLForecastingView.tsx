@@ -86,12 +86,6 @@ const CONSTRUCT_OPTIONS: ConstructOption[] = [
     label: 'Tốc Độ Phục Hồi Xao Nhãng (Distraction Recovery)',
     category: 'Chú Ý',
     description: 'Khả năng nhanh chóng quay lại nhiệm vụ chính sau khi bị phân tâm.'
-  },
-  {
-    key: 'TaskCompletion',
-    label: 'Tỷ Lệ Hoàn Thành Nhiệm Vụ (Task Completion Rate %)',
-    category: 'Hành Vi',
-    description: 'Tỷ lệ hoàn thành các bài tập và vi hành động được giao.'
   }
 ];
 
@@ -104,10 +98,12 @@ export const MLForecastingView: React.FC = () => {
   const [showConfidenceInterval, setShowConfidenceInterval] = useState<boolean>(true);
   const [showScenarios, setShowScenarios] = useState<boolean>(true);
 
-  // Raw time series data
+  // Raw time series data (ưu tiên growthHistory thật, fallback demo có cờ isDemo)
   const rawData = useMemo(() => {
-    return getConstructTimeSeriesData(selectedConstruct);
-  }, [selectedConstruct]);
+    return getConstructTimeSeriesData(selectedConstruct, studentModel?.growthHistory);
+  }, [selectedConstruct, studentModel?.growthHistory]);
+
+  const isDemoData = rawData.length > 0 && rawData.every((p) => p.isDemo);
 
   // Compute forecast and metrics based on selected model
   const { forecast, metrics, modelComparison } = useMemo(() => {
@@ -273,6 +269,20 @@ export const MLForecastingView: React.FC = () => {
       </div>
 
       {/* Main Forecasting Chart Card */}
+      {isDemoData && (
+        <div className="bg-amber-50 border border-amber-300 text-amber-900 text-xs px-5 py-3 rounded-2xl flex items-start gap-3">
+          <ShieldAlert className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <span className="font-black block">DỮ LIỆU DEMO (MINH HOẠ)</span>
+            <span>
+              Chưa có đủ 2 lần đo growthHistory cho construct này nên biểu đồ đang vẽ chuỗi
+              số minh hoạ, KHÔNG phải số liệu thực của học sinh. Nạp thêm lịch sử đo để
+              thấy quỹ đạo thật (audit rel-04).
+            </span>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-4">
           <div>
